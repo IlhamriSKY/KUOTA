@@ -3,7 +3,7 @@
 Monitor GitHub Copilot and Claude Code usage across multiple accounts.
 Built with [Bun](https://bun.sh), [Hono](https://hono.dev), [HTMX](https://htmx.org), and [Tailwind CSS](https://tailwindcss.com).
 
-![Demo Screenshot](demo.png)
+![Demo Screenshot](docs/images/demo.png)
 
 ## Features
 
