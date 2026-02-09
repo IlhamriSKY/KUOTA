@@ -11,7 +11,7 @@ Built with [Bun](https://bun.sh), [Hono](https://hono.dev), [HTMX](https://htmx.
 - **Claude Pro/Max** - track session and weekly usage limits via Claude Code CLI OAuth credentials (auto-refresh supported)
 - **Auto-refresh** - usage data refreshed every hour automatically
 - **MySQL backup** - optional sync from local SQLite to MySQL
-- **PWA Ready** - install as standalone app, works offline with smart caching
+- **PWA Ready** - install as standalone app
 
 ## Requirements
 

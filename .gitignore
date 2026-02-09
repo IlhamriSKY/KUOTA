@@ -11,7 +11,6 @@ dist/
 *.tgz
 public/css/styles.css
 public/js/htmx.min.js
-# PWA icons are committed for production use (not ignored)
 
 # ============================================
 # App data & secrets (CRITICAL - never commit)
