@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1770641844261,
+      "tag": "0000_flippant_next_avengers",
+      "breakpoints": true
+    }
+  ]
+}
