@@ -1,0 +1,11 @@
+<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512' fill='none'>
+  <g transform='translate(256 256)'>
+    <g transform='rotate(-25)'>
+      <circle cx='0' cy='0' r='180' stroke='#6d9eff' stroke-width='24' fill='none'/>
+      <circle cx='0' cy='0' r='123' stroke='#6d9eff' stroke-width='24' fill='none'/>
+      <circle cx='0' cy='0' r='60' stroke='#6d9eff' stroke-width='24' fill='none'/>
+      <circle cx='0' cy='-152' r='28' fill='#6d9eff' stroke='none'/>
+      <path d='M 0,-124 L 0,-62' stroke='#6d9eff' stroke-width='24' stroke-linecap='round'/>
+    </g>
+  </g>
+</svg>

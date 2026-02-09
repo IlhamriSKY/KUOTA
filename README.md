@@ -10,9 +10,8 @@ Built with [Bun](https://bun.sh), [Hono](https://hono.dev), [HTMX](https://htmx.
 - **Claude Code** - track cost usage, budget, sessions, lines of code, commits, and PRs
 - **Claude Pro/Max** - track session and weekly usage limits via Claude Code CLI OAuth credentials (auto-refresh supported)
 - **Auto-refresh** - usage data refreshed every hour automatically
-- **Two auth methods** - GitHub OAuth Device Flow or direct PAT input
-- **Dark/Light theme** - toggle between dark and light mode
 - **MySQL backup** - optional sync from local SQLite to MySQL
+- **PWA Ready** - install as standalone app, works offline with smart caching
 
 ## Requirements
 
@@ -46,8 +45,9 @@ Open [http://localhost:3000](http://localhost:3000) and add your accounts.
 | --------------------- | ---------------------------------------- |
 | `bun run start`       | Build assets + start production server   |
 | `bun run dev`         | Build assets + start with hot reload     |
-| `bun run build`       | Build all assets (CSS + vendor)          |
+| `bun run build`       | Build all assets (CSS + icons + vendor)  |
 | `bun run build:css`   | Build Tailwind CSS (minified)            |
+| `bun run build:icons` | Generate PWA icons from SVG              |
 | `bun run build:css:watch` | Watch mode for Tailwind CSS          |
 | `bun run db:generate` | Generate Drizzle migration from schema   |
 | `bun run db:push`     | Push schema directly to DB (dev)         |
@@ -76,7 +76,8 @@ Open [http://localhost:3000](http://localhost:3000) and add your accounts.
 
 Credentials are obtained from the **Claude Code CLI** OAuth session.
 
-> **⚠️ Disclaimer:** This feature uses an unofficial OAuth usage endpoint from Anthropic. The API may change or break at any time without notice.
+> [!CAUTION]
+> **Disclaimer:** This feature uses an unofficial OAuth usage endpoint from Anthropic. The API may change or break at any time without notice.
 
 #### Auto-detect (recommended)
 1. Install [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) and log in by running `claude` in your terminal
@@ -88,7 +89,8 @@ Credentials are obtained from the **Claude Code CLI** OAuth session.
 2. Copy `accessToken` and `refreshToken` from the `claudeAiOauth` object
 3. Paste them in the app under the **Claude Pro/Max** tab
 
-> **Note:** OAuth tokens expire and are refreshed automatically when a `refreshToken` is available. If the session expires, re-login with `claude` CLI. The usage API is unofficial and may change at any time.
+> [!WARNING]
+> OAuth tokens expire and are refreshed automatically when a `refreshToken` is available. If the session expires, re-login with `claude` CLI. The usage API is unofficial and may change at any time.
 
 ## OAuth Setup (Optional)
 
@@ -114,6 +116,7 @@ For GitHub Device Flow login (no token copy-pasting):
 
 ## Note
 
+> [!CAUTION]
 > **This project is made for learning purposes. Use at your own risk.**
 >
 > Currently only supports GitHub Copilot, Claude Code, and Claude Pro/Max. Other AI agents will be available soon - or feel free to build your own and submit a PR!

@@ -152,10 +152,11 @@ function copilotAccountCard(account, usage, details = [], error = null) {
   const orgs = account.github_orgs ? account.github_orgs.split(",").filter(Boolean) : [];
 
   return `
-    <div class="bg-card border rounded-md fade-in flex flex-col account-card ${isFav ? "ring-1 ring-amber-400" : ""}" id="account-${account.id}"
+     <div class="bg-card border ${account.is_paused ? "border-red-500/50" : ""} rounded-md fade-in flex flex-col account-card ${isFav ? "ring-1 ring-amber-400" : ""}" id="account-${account.id}"
          data-username="${escapeHtml(account.github_username)}"
          data-displayname="${escapeHtml(account.display_name || "")}"
          data-favorite="${isFav ? "1" : "0"}"
+         data-paused="${account.is_paused ? "1" : "0"}"
          data-loginmethod="${resolveLoginMethod(account)}">
       <div class="p-4 pb-0">
         <div class="flex items-start justify-between gap-2">
@@ -268,10 +269,11 @@ function claudeWebAccountCard(account, usage, details = [], error = null) {
   else if (sessionPct > 50) { sessionColor = "bg-amber-500"; sessionTextCls = "text-amber-500"; }
 
   return `
-    <div class="bg-card border rounded-md fade-in flex flex-col account-card ${isFav ? "ring-1 ring-amber-400/40" : ""}" id="account-${account.id}"
+    <div class="bg-card border ${account.is_paused ? "border-red-500/50" : ""} rounded-md fade-in flex flex-col account-card ${isFav ? "ring-1 ring-amber-400/40" : ""}" id="account-${account.id}"
          data-username="${escapeHtml(account.github_username)}"
          data-displayname="${escapeHtml(account.display_name || "")}"
          data-favorite="${isFav ? "1" : "0"}"
+         data-paused="${account.is_paused ? "1" : "0"}"
          data-loginmethod="${resolveLoginMethod(account)}">
       <div class="p-4 pb-0">
         <div class="flex items-start justify-between gap-2">
@@ -437,10 +439,11 @@ function claudeCodeAccountCard(account, usage, details = [], error = null) {
   const prs = usage ? usage.pull_requests || 0 : 0;
 
   return `
-    <div class="bg-card border rounded-md fade-in flex flex-col account-card ${isFav ? "ring-1 ring-amber-400/40" : ""}" id="account-${account.id}"
+    <div class="bg-card border ${account.is_paused ? "border-red-500/50" : ""} rounded-md fade-in flex flex-col account-card ${isFav ? "ring-1 ring-amber-400/40" : ""}" id="account-${account.id}"
          data-username="${escapeHtml(account.github_username)}"
          data-displayname="${escapeHtml(account.display_name || "")}"
          data-favorite="${isFav ? "1" : "0"}"
+         data-paused="${account.is_paused ? "1" : "0"}"
          data-loginmethod="${resolveLoginMethod(account)}">
       <div class="p-4 pb-0">
         <div class="flex items-start justify-between gap-2">
@@ -1031,16 +1034,16 @@ export function editAccountForm(account) {
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-2.5">
             ${isAnyClaude ? `
-            <div class="w-8 h-8 rounded-full border border-${accentColor}/30 bg-${accentColor}/10 flex items-center justify-center text-${accentColor}">
+            <div class="w-8 h-8 rounded-full border border-${accentColor}/30 bg-${accentColor}/10 flex items-center justify-center text-${accentColor} censor-target">
               ${icon("claude", 16)}
             </div>` : `
             <img src="${escapeHtml(account.avatar_url || `https://github.com/${account.github_username}.png?size=80`)}" 
-                 alt="" class="w-8 h-8 rounded-full border border-primary/30"
+                 alt="" class="w-8 h-8 rounded-full border border-primary/30 censor-target"
                  onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23888%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22><path d=%22M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2%22/><circle cx=%2212%22 cy=%227%22 r=%224%22/></svg>'">`}
             <div>
               <h3 class="text-sm font-semibold flex items-center gap-1.5">
                 ${icon("edit", 14, `text-${accentColor}`)}
-                Editing ${isAnyClaude ? escapeHtml(account.display_name || account.github_username) : "@" + escapeHtml(account.github_username)}
+                Editing <span class="censor-target">${isAnyClaude ? escapeHtml(account.display_name || account.github_username) : "@" + escapeHtml(account.github_username)}</span>
               </h3>
               <p class="text-[11px] text-muted-foreground">${isClaudeWeb ? "Update OAuth tokens or plan" : isClaude ? "Update API key, plan, or budget" : "Update token or change plan"}</p>
             </div>
@@ -1099,7 +1102,7 @@ export function editAccountForm(account) {
         <div>
           <label class="block text-xs font-medium mb-1">User Email <span class="text-muted-foreground font-normal">(optional)</span></label>
           <input type="email" name="user_email" value="${escapeHtml(account.claude_user_email || "")}" placeholder="Filter to specific user" 
-                 class="input-field w-full px-2.5 py-1.5 bg-background border rounded text-foreground text-xs">
+                 class="input-field w-full px-2.5 py-1.5 bg-background border rounded text-foreground text-xs censor-target">
         </div>
         <div class="grid grid-cols-2 gap-3">
           <div>

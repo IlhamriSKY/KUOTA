@@ -12,7 +12,21 @@ export function layout(title, body, extraHead = "") {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${escapeTitle(title)} - KUOTA</title>
+
+  <!-- PWA Meta Tags -->
+  <meta name="description" content="Monitor GitHub Copilot and Claude Code usage across multiple accounts">
+  <meta name="theme-color" content="#6d9eff">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="KUOTA">
+  <meta name="mobile-web-app-capable" content="yes">
+
+  <!-- Icons -->
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236d9eff' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cg transform='rotate(-25 12 12)'%3E%3Ccircle cx='12' cy='12' r='9.5' stroke-width='1.8'/%3E%3Ccircle cx='12' cy='12' r='6.5' stroke-width='1.8'/%3E%3Ccircle cx='12' cy='12' r='3.2' stroke-width='1.8'/%3E%3Ccircle cx='12' cy='4' r='1.5' fill='%236d9eff' stroke='none'/%3E%3Cpath d='M12 5.5v3.3' stroke-width='1.8'/%3E%3C/g%3E%3C/svg%3E">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <link rel="manifest" href="/manifest.json">
+
   <link rel="stylesheet" href="/css/styles.css">
   <script src="/js/htmx.min.js"></script>
   ${extraHead}
@@ -83,6 +97,10 @@ export function layout(title, body, extraHead = "") {
           ${icon("settings", 16)}
           <span class="hidden sm:inline">Settings</span>
         </a>
+        <a href="https://github.com/IlhamriSKY/KUOTA" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm rounded hover:bg-accent transition-colors text-muted-foreground hover:text-foreground" aria-label="GitHub">
+          ${icon("github", 16)}
+          <span class="hidden sm:inline">GitHub</span>
+        </a>
         <span class="w-px h-5 bg-border mx-1"></span>
         <button onclick="toggleTheme()" class="inline-flex items-center justify-center w-8 h-8 rounded hover:bg-accent transition-colors text-muted-foreground">
           <span class="hidden dark:block">${icon("sun", 16)}</span>
@@ -100,7 +118,7 @@ export function layout(title, body, extraHead = "") {
   <!-- Footer -->
   <footer class="border-t mt-auto">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between text-xs text-muted-foreground">
-      <span>Built by <a href="https://ilhamriski.com" target="_blank" rel="noopener noreferrer" class="text-primary hover:underline">Ilham</a></span>
+      <span>Built by <a href="https://ilhamriski.com" target="_blank" rel="noopener noreferrer" class="text-primary hover:underline">IlhamRiski</a></span>
       <span id="realtime-clock"></span>
     </div>
   </footer>
@@ -334,6 +352,65 @@ export function layout(title, body, extraHead = "") {
     document.body.addEventListener('htmx:afterSettle', function() {
       applyCensorIcons();
     });
+
+    // PWA Service Worker Registration
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function() {
+        navigator.serviceWorker.register('/sw.js')
+          .then(function(registration) {
+            console.log('[PWA] Service Worker registered:', registration.scope);
+
+            // Check for updates periodically
+            setInterval(function() {
+              registration.update();
+            }, 60000); // Check every minute
+
+            // Listen for updates
+            registration.addEventListener('updatefound', function() {
+              var newWorker = registration.installing;
+              newWorker.addEventListener('statechange', function() {
+                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                  // New service worker available, show update notification
+                  if (confirm('A new version is available. Reload to update?')) {
+                    newWorker.postMessage({ type: 'SKIP_WAITING' });
+                    window.location.reload();
+                  }
+                }
+              });
+            });
+          })
+          .catch(function(err) {
+            console.error('[PWA] Service Worker registration failed:', err);
+          });
+
+        // Reload on controller change
+        navigator.serviceWorker.addEventListener('controllerchange', function() {
+          window.location.reload();
+        });
+      });
+    }
+
+    // PWA Install Prompt
+    var deferredPrompt;
+    window.addEventListener('beforeinstallprompt', function(e) {
+      e.preventDefault();
+      deferredPrompt = e;
+      console.log('[PWA] Install prompt available');
+    });
+
+    // Optional: Add install button functionality
+    window.installPWA = function() {
+      if (deferredPrompt) {
+        deferredPrompt.prompt();
+        deferredPrompt.userChoice.then(function(choiceResult) {
+          if (choiceResult.outcome === 'accepted') {
+            console.log('[PWA] User accepted install');
+            showToast('App installed successfully!', 'success');
+          }
+          deferredPrompt = null;
+        });
+      }
+    };
   </script>
 
 </body>

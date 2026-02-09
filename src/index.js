@@ -27,10 +27,7 @@ app.use("*", async (c, next) => {
   c.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
 });
 
-// Static files with cache headers
-app.use("/css/*", serveStatic({ root: "./public" }));
-app.use("/js/*", serveStatic({ root: "./public" }));
-app.use("/fonts/*", serveStatic({ root: "./public" }));
+// Cache headers middleware (must be before serveStatic)
 app.use("/css/*", async (c, next) => {
   await next();
   c.header("Cache-Control", "public, max-age=86400");
@@ -43,6 +40,33 @@ app.use("/fonts/*", async (c, next) => {
   await next();
   c.header("Cache-Control", "public, max-age=604800");
 });
+app.use("/icons/*", async (c, next) => {
+  await next();
+  c.header("Cache-Control", "public, max-age=604800");
+});
+app.use("/manifest.json", async (c, next) => {
+  await next();
+  c.header("Cache-Control", "public, max-age=86400");
+  c.header("Content-Type", "application/manifest+json");
+});
+app.use("/sw.js", async (c, next) => {
+  await next();
+  c.header("Cache-Control", "no-cache");
+  c.header("Content-Type", "application/javascript");
+});
+app.use("/favicon.ico", async (c, next) => {
+  await next();
+  c.header("Cache-Control", "public, max-age=604800");
+});
+
+// Static files
+app.use("/css/*", serveStatic({ root: "./public" }));
+app.use("/js/*", serveStatic({ root: "./public" }));
+app.use("/fonts/*", serveStatic({ root: "./public" }));
+app.use("/icons/*", serveStatic({ root: "./public" }));
+app.use("/manifest.json", serveStatic({ root: "./public" }));
+app.use("/sw.js", serveStatic({ root: "./public" }));
+app.use("/favicon.ico", serveStatic({ root: "./public" }));
 
 // Mount routes
 app.route("/", pages);

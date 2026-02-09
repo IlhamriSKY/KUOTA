@@ -103,10 +103,10 @@
 .account-card {
   transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 }
-.account-card:hover:not([data-favorite="1"]) {
+.account-card:hover:not([data-favorite="1"]):not([data-paused="1"]) {
   border-color: hsl(0 0% 20%);
 }
-.dark .account-card:hover:not([data-favorite="1"]) {
+.dark .account-card:hover:not([data-favorite="1"]):not([data-paused="1"]) {
   border-color: hsl(0 0% 85%);
 }
 .account-card[data-favorite="1"] {
@@ -321,4 +321,9 @@ select.input-field {
   filter: blur(5px);
   user-select: none;
   pointer-events: none;
+}
+
+/* Allow interaction on form inputs even when censored */
+[data-censored] form .censor-target {
+  pointer-events: auto;
 }
