@@ -43,9 +43,10 @@ Open [http://localhost:3000](http://localhost:3000) and add your accounts.
 
 | Command               | Description                              |
 | --------------------- | ---------------------------------------- |
-| `bun run start`       | Build assets + start production server   |
-| `bun run dev`         | Build assets + start with hot reload     |
+| `bun run start`       | Build all + start production server      |
+| `bun run dev`         | Fast build + start with hot reload (no icon rebuild) |
 | `bun run build`       | Build all assets (CSS + icons + vendor)  |
+| `bun run build:dev`   | Build for development (CSS + vendor only) |
 | `bun run build:css`   | Build Tailwind CSS (minified)            |
 | `bun run build:icons` | Generate PWA icons from SVG              |
 | `bun run build:css:watch` | Watch mode for Tailwind CSS          |

@@ -7,8 +7,9 @@
   "private": true,
   "scripts": {
     "start": "bun run build && bun run src/index.js",
-    "dev": "bun run build && bun --hot run src/index.js",
+    "dev": "bun run build:dev && bun --hot run src/index.js",
     "build": "bun run build:assets && bun run build:icons && bun run build:css",
+    "build:dev": "bun run build:assets && bun run build:css",
     "build:css": "bunx tailwindcss -i src/styles/globals.css -o public/css/styles.css --minify",
     "build:css:watch": "bunx tailwindcss -i src/styles/globals.css -o public/css/styles.css --watch",
     "build:assets": "bun run scripts/copy-assets.js",
