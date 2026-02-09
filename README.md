@@ -1,6 +1,7 @@
 # KUOTA
 
 Monitor GitHub Copilot and Claude Code usage across multiple accounts.
+
 Built with [Bun](https://bun.sh), [Hono](https://hono.dev), [HTMX](https://htmx.org), and [Tailwind CSS](https://tailwindcss.com).
 
 ![Demo Screenshot](docs/images/demo.png)
@@ -8,12 +9,12 @@ Built with [Bun](https://bun.sh), [Hono](https://hono.dev), [HTMX](https://htmx.
 ## Features
 
 - **Multi-account** - monitor multiple GitHub Copilot and Claude Code accounts in one dashboard
-- **GitHub Copilot** - track premium request consumption, model breakdown, and overage costs
-- **Claude Code** - track cost usage, budget, sessions, lines of code, commits, and PRs
-- **Claude Pro/Max** - track session and weekly usage limits via Claude Code CLI OAuth credentials (auto-refresh supported)
-- **Auto-refresh** - usage data refreshed every hour automatically
-- **MySQL backup** - optional sync from local SQLite to MySQL
-- **PWA Ready** - install as standalone app
+- **GitHub Copilot** - track completions usage, chat conversations, total requests, and premium request consumption
+- **Claude Code** - monitor API usage, total cost, budget limits, active sessions, and token consumption
+- **Claude Pro/Max** - track daily message limits and weekly usage caps via Claude Code CLI OAuth credentials (auto-refresh supported)
+- **Auto-refresh** - usage data automatically refreshed every hour in the background
+- **MySQL backup** - optional sync from local SQLite database to remote MySQL server
+- **PWA Ready** - install as a standalone progressive web app on any device
 
 ## Requirements
 
