@@ -5,12 +5,14 @@ Built with [Bun](https://bun.sh), [Hono](https://hono.dev), [HTMX](https://htmx.
 
 ## Features
 
-- **Multi-account** — monitor multiple GitHub Copilot and Claude Code accounts in one dashboard
-- **GitHub Copilot** — track premium request consumption, model breakdown, and overage costs
-- **Claude Code** — track cost usage, budget, sessions, lines of code, commits, and PRs
-- **Claude Pro/Max** — track session and weekly usage limits via Claude Code CLI OAuth credentials (auto-refresh supported)
-- **Auto-refresh** — usage data refreshed every hour automatically
-- **MySQL backup** — optional sync from local SQLite to MySQL
+- **Multi-account** - monitor multiple GitHub Copilot and Claude Code accounts in one dashboard
+- **GitHub Copilot** - track premium request consumption, model breakdown, and overage costs
+- **Claude Code** - track cost usage, budget, sessions, lines of code, commits, and PRs
+- **Claude Pro/Max** - track session and weekly usage limits via Claude Code CLI OAuth credentials (auto-refresh supported)
+- **Auto-refresh** - usage data refreshed every hour automatically
+- **Two auth methods** - GitHub OAuth Device Flow or direct PAT input
+- **Dark/Light theme** - toggle between dark and light mode
+- **MySQL backup** - optional sync from local SQLite to MySQL
 
 ## Requirements
 
@@ -23,8 +25,8 @@ Built with [Bun](https://bun.sh), [Hono](https://hono.dev), [HTMX](https://htmx.
 
 ```bash
 # Clone the repo
-git clone https://github.com/IlhamriSKY/copilot-quota-monitor.git
-cd copilot-quota-monitor
+git clone https://github.com/IlhamriSKY/KUOTA.git
+cd KUOTA
 
 # Install dependencies
 bun install
@@ -100,8 +102,18 @@ For GitHub Device Flow login (no token copy-pasting):
 6. Check **"Enable Device Flow"**
 7. Copy the **Client ID** and set it in `.env` as `GITHUB_OAUTH_CLIENT_ID`
 
+## Security
+
+- PAT tokens and API keys are encrypted at rest using AES-256-GCM
+- Encryption key is auto-generated and stored in `.secret` (gitignored)
+- No tokens are sent to MySQL backup - only usage data
+- All user input is HTML-escaped to prevent XSS
+- SQL column names are whitelisted to prevent injection
+- Security headers included (X-Content-Type-Options, X-Frame-Options, etc.)
+- Rate limiting on mutation endpoints
+
 ## Note
 
 > **This project is made for learning purposes. Use at your own risk.**
 >
-> Currently only supports GitHub Copilot, Claude Code, and Claude Pro/Max. Other AI agents will be available soon — or feel free to build your own and submit a PR!
+> Currently only supports GitHub Copilot, Claude Code, and Claude Pro/Max. Other AI agents will be available soon - or feel free to build your own and submit a PR!
