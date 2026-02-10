@@ -77,15 +77,31 @@ export function renderDashboard() {
     loginMethodCounts[lm] = (loginMethodCounts[lm] || 0) + 1;
 
     // Categorize cards by status, but favorites always go to their respective active category
-    const card = accountCard({ ...acc, pat_token: hasPat }, usage, details);
+    const cardData = { card: accountCard({ ...acc, pat_token: hasPat }, usage, details), isFavorite };
     if (isPaused) {
-      pausedCards.push(card);
+      pausedCards.push(cardData);
     } else if (hasPat) {
-      activeCards.push(card);
+      activeCards.push(cardData);
     } else {
-      inactiveCards.push(card);
+      inactiveCards.push(cardData);
     }
   }
+
+  // Sort cards: favorites first, then non-favorites
+  const sortByFavorite = (a, b) => {
+    if (a.isFavorite && !b.isFavorite) return -1;
+    if (!a.isFavorite && b.isFavorite) return 1;
+    return 0;
+  };
+
+  activeCards.sort(sortByFavorite);
+  pausedCards.sort(sortByFavorite);
+  inactiveCards.sort(sortByFavorite);
+
+  // Extract the card HTML from cardData objects
+  const activeCardHtml = activeCards.map(c => c.card);
+  const pausedCardHtml = pausedCards.map(c => c.card);
+  const inactiveCardHtml = inactiveCards.map(c => c.card);
 
   const copilotPct = copilotLimit > 0 ? (copilotUsed / copilotLimit) * 100 : 0;
   const claudePct = claudeBudget > 0 ? (claudeCost / claudeBudget) * 100 : 0;
@@ -254,28 +270,28 @@ export function renderDashboard() {
 
       <!-- Cards -->
       <div id="cards-grid">
-        ${activeCards.length > 0 ? `
+        ${activeCardHtml.length > 0 ? `
           <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3 active-accounts-section">
-            ${activeCards.join("\n")}
+            ${activeCardHtml.join("\n")}
           </div>
         ` : ""}
 
-        ${activeCards.length > 0 && (pausedCards.length > 0 || inactiveCards.length > 0) ? `
+        ${activeCardHtml.length > 0 && (pausedCardHtml.length > 0 || inactiveCardHtml.length > 0) ? `
           <div class="relative my-8" id="accounts-divider">
             <div class="absolute inset-0 flex items-center">
               <div class="w-full border-t-2 border-dashed border-muted-foreground/20"></div>
             </div>
             <div class="relative flex justify-center">
               <span class="bg-background px-4 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                ${pausedCards.length + inactiveCards.length} Paused/Inactive Account${pausedCards.length + inactiveCards.length > 1 ? "s" : ""}
+                ${pausedCardHtml.length + inactiveCardHtml.length} Paused/Inactive Account${pausedCardHtml.length + inactiveCardHtml.length > 1 ? "s" : ""}
               </span>
             </div>
           </div>
         ` : ""}
 
-        ${(pausedCards.length > 0 || inactiveCards.length > 0) ? `
+        ${(pausedCardHtml.length > 0 || inactiveCardHtml.length > 0) ? `
           <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3 inactive-accounts-section">
-            ${[...pausedCards, ...inactiveCards].join("\n")}
+            ${[...pausedCardHtml, ...inactiveCardHtml].join("\n")}
           </div>
         ` : ""}
       </div>

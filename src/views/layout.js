@@ -212,8 +212,12 @@ export function layout(title, body, extraHead = "") {
       // Close modal on delete
       if (path.indexOf('/api/account/') === 0 && verb === 'delete' && path.split('/').length === 4) {
         closeDeleteModal();
-        if (ok) showToast('Account removed', 'success');
-        else showToast('Failed to remove account', 'error');
+        if (ok) {
+          showToast('Account removed', 'success');
+          // Delete animation is handled in htmx:beforeSwap
+        } else {
+          showToast('Failed to remove account', 'error');
+        }
       }
       // Refresh single
       else if (path.indexOf('/api/refresh/') === 0) {
@@ -240,10 +244,60 @@ export function layout(title, body, extraHead = "") {
       // Edit (PUT)
       else if (path.indexOf('/api/account/') === 0 && verb === 'put' && ok) {
         showToast('Account updated', 'success');
+        // Maintain card position after edit
+        handleCardEdit(e);
+      }
+      // Pause/Resume toggle
+      else if (path.indexOf('/api/account/') === 0 && path.indexOf('/pause') > 0 && ok) {
+        showToast('Status updated', 'success');
+        // Styling will be handled in htmx:afterSwap instead
+        // Section transition will be triggered after DOM swap completes
       }
       // Favorite toggle
       else if (path.indexOf('/api/account/') === 0 && path.indexOf('/favorite') > 0 && ok) {
         showToast('Pin updated', 'success');
+        // Styling will be handled in htmx:afterSwap instead
+        // Animation will be triggered after DOM swap completes
+      }
+    });
+
+    // Handle delete animation BEFORE swap removes the card from DOM
+    document.body.addEventListener('htmx:beforeSwap', function(e) {
+      var bsPath = (e.detail.pathInfo && e.detail.pathInfo.requestPath) || (e.detail.requestConfig && e.detail.requestConfig.path) || '';
+      var bsVerb = (e.detail.requestConfig && e.detail.requestConfig.verb || '').toLowerCase();
+      if (bsPath.indexOf('/api/account/') === 0 && bsVerb === 'delete' && bsPath.split('/').length === 4) {
+        var delTarget = e.detail.target;
+        if (delTarget && delTarget.classList && delTarget.classList.contains('account-card')) {
+          // Prevent HTMX's immediate swap (which would remove the card instantly)
+          e.detail.shouldSwap = false;
+          // Remove from position tracking
+          cardOriginalPositions.delete(delTarget.id);
+          // Animate fade out
+          delTarget.style.transition = 'transform 0.3s ease-out, opacity 0.3s ease-out';
+          delTarget.style.transform = 'scale(0.95)';
+          delTarget.style.opacity = '0';
+          delTarget.style.pointerEvents = 'none';
+          // Remove from DOM after animation completes
+          setTimeout(function() {
+            delTarget.remove();
+            updateSectionVisibility();
+          }, 300);
+        }
+      }
+    });
+
+    // Listen for HTMX afterSwap to handle animations AFTER DOM swap completes
+    document.body.addEventListener('htmx:afterSwap', function(e) {
+      var path = (e.detail.pathInfo && e.detail.pathInfo.requestPath) || e.detail.requestConfig.path || '';
+
+      // Handle favorite toggle animation AFTER swap (styling already correct from server)
+      if (path.indexOf('/api/account/') === 0 && path.indexOf('/favorite') > 0) {
+        handleFavoriteToggle(e);
+      }
+
+      // Handle pause/resume animation AFTER swap (styling already correct from server)
+      else if (path.indexOf('/api/account/') === 0 && path.indexOf('/pause') > 0) {
+        handlePauseToggle(e);
       }
     });
 
@@ -410,10 +464,10 @@ export function layout(title, body, extraHead = "") {
       var divider = document.getElementById('accounts-divider');
 
       if (activeSection) {
-        activeSection.parentElement.style.display = visibleActiveCount > 0 ? '' : 'none';
+        activeSection.style.display = visibleActiveCount > 0 ? '' : 'none';
       }
       if (inactiveSection) {
-        inactiveSection.parentElement.style.display = visibleInactiveCount > 0 ? '' : 'none';
+        inactiveSection.style.display = visibleInactiveCount > 0 ? '' : 'none';
       }
       if (divider) {
         divider.style.display = (visibleActiveCount > 0 && visibleInactiveCount > 0) ? '' : 'none';
@@ -446,10 +500,21 @@ export function layout(title, body, extraHead = "") {
         activeLoginFilter = method;
       }
       document.querySelectorAll('.login-filter-badge').forEach(function(btn) {
-        if (btn.getAttribute('data-method') === activeLoginFilter) {
-          btn.classList.add('border-current', 'font-semibold');
+        var method = btn.getAttribute('data-method');
+        if (method === activeLoginFilter) {
+          // Blue for GitHub (pat/oauth)
+          if (method === 'pat' || method === 'oauth') {
+            btn.style.backgroundColor = 'rgb(59 130 246)'; // blue-500
+            btn.style.color = 'white';
+          }
+          // Orange for Claude (claude_cli/claude_api)
+          else if (method === 'claude_cli' || method === 'claude_api') {
+            btn.style.backgroundColor = '#D97757';
+            btn.style.color = 'white';
+          }
         } else {
-          btn.classList.remove('border-current', 'font-semibold');
+          btn.style.backgroundColor = '';
+          btn.style.color = '';
         }
       });
       applyFilters();
@@ -462,10 +527,26 @@ export function layout(title, body, extraHead = "") {
         activeStatusFilter = status;
       }
       document.querySelectorAll('.status-filter-badge').forEach(function(btn) {
-        if (btn.getAttribute('data-status') === activeStatusFilter) {
-          btn.classList.add('border-current', 'font-semibold');
+        var btnStatus = btn.getAttribute('data-status');
+        if (btnStatus === activeStatusFilter) {
+          // Green for Active
+          if (btnStatus === 'active') {
+            btn.style.backgroundColor = 'rgb(16 185 129)'; // emerald-500
+            btn.style.color = 'white';
+          }
+          // Gray for Paused
+          else if (btnStatus === 'paused') {
+            btn.style.backgroundColor = 'rgb(107 114 128)'; // gray-500
+            btn.style.color = 'white';
+          }
+          // Amber for Inactive
+          else if (btnStatus === 'inactive') {
+            btn.style.backgroundColor = 'rgb(245 158 11)'; // amber-500
+            btn.style.color = 'white';
+          }
         } else {
-          btn.classList.remove('border-current', 'font-semibold');
+          btn.style.backgroundColor = '';
+          btn.style.color = '';
         }
       });
       applyFilters();
@@ -475,16 +556,353 @@ export function layout(title, body, extraHead = "") {
       activeLoginFilter = null;
       activeStatusFilter = null;
       document.querySelectorAll('.login-filter-badge').forEach(function(btn) {
-        btn.classList.remove('border-current', 'font-semibold');
+        btn.style.backgroundColor = '';
+        btn.style.color = '';
       });
       document.querySelectorAll('.status-filter-badge').forEach(function(btn) {
-        btn.classList.remove('border-current', 'font-semibold');
+        btn.style.backgroundColor = '';
+        btn.style.color = '';
       });
       var resetBtn = document.getElementById('filter-reset-btn');
       if (resetBtn) resetBtn.classList.add('hidden');
       var searchInput = document.getElementById('account-search');
       if (searchInput) searchInput.value = '';
       applyFilters();
+    }
+
+    // Store original positions for unfavorite restoration
+    var cardOriginalPositions = new Map();
+
+    function handleFavoriteToggle(e) {
+      // Find the card by ID from the DOM (robust for outerHTML swap)
+      var favPath = (e.detail.pathInfo && e.detail.pathInfo.requestPath) || e.detail.requestConfig.path || '';
+      var favAccountId = favPath.split('/')[3];
+      if (!favAccountId) return;
+
+      var newCard = document.getElementById('account-' + favAccountId);
+      if (!newCard) return;
+
+      var cardId = newCard.id;
+      var isFavorite = newCard.getAttribute('data-favorite') === '1';
+      var status = newCard.getAttribute('data-status') || 'active';
+
+      // Determine which section this card belongs to
+      var targetSection;
+      if (status === 'active') {
+        targetSection = document.querySelector('.active-accounts-section');
+      } else {
+        targetSection = document.querySelector('.inactive-accounts-section');
+      }
+
+      if (!targetSection) return;
+
+      // Server already rendered correct styling (ring border, star icon, colors)
+      // No need to update styling here - just handle animation
+
+      if (isFavorite) {
+        // Store original position before moving
+        var allCards = Array.from(targetSection.querySelectorAll('.account-card'));
+        var originalIndex = allCards.indexOf(newCard);
+
+        // Store the card IDs that were before this card
+        var siblingsBefore = [];
+        for (var i = 0; i < originalIndex; i++) {
+          if (allCards[i] && allCards[i].id) {
+            siblingsBefore.push(allCards[i].id);
+          }
+        }
+
+        cardOriginalPositions.set(cardId, {
+          siblings: siblingsBefore,
+          section: status
+        });
+
+        // Move to end of favorites list (rightmost favorite position)
+        newCard.style.transition = 'transform 0.3s ease-out, opacity 0.3s ease-out';
+        newCard.style.transform = 'translateY(-20px)';
+        newCard.style.opacity = '0.5';
+
+        setTimeout(function() {
+          // Find the first non-favorite card to insert before it
+          var firstNonFav = null;
+          var sectionCards = targetSection.querySelectorAll('.account-card');
+          for (var j = 0; j < sectionCards.length; j++) {
+            if (sectionCards[j].getAttribute('data-favorite') !== '1' && sectionCards[j] !== newCard) {
+              firstNonFav = sectionCards[j];
+              break;
+            }
+          }
+          if (firstNonFav) {
+            targetSection.insertBefore(newCard, firstNonFav);
+          } else {
+            targetSection.appendChild(newCard);
+          }
+          newCard.style.transform = '';
+          newCard.style.opacity = '';
+
+          // Remove inline styles after animation
+          setTimeout(function() {
+            newCard.style.transition = '';
+          }, 300);
+        }, 50);
+      } else {
+        // Restore to original position
+        var originalPos = cardOriginalPositions.get(cardId);
+
+        if (originalPos && originalPos.siblings && originalPos.siblings.length > 0) {
+          // Find the last sibling that still exists
+          var insertAfter = null;
+          for (var i = originalPos.siblings.length - 1; i >= 0; i--) {
+            var siblingId = originalPos.siblings[i];
+            var siblingCard = document.getElementById(siblingId);
+            if (siblingCard && siblingCard.parentElement === targetSection) {
+              insertAfter = siblingCard;
+              break;
+            }
+          }
+
+          // Animate before moving
+          newCard.style.transition = 'transform 0.3s ease-out, opacity 0.3s ease-out';
+          newCard.style.transform = 'translateY(20px)';
+          newCard.style.opacity = '0.5';
+
+          setTimeout(function() {
+            if (insertAfter && insertAfter.nextSibling) {
+              targetSection.insertBefore(newCard, insertAfter.nextSibling);
+            } else if (insertAfter) {
+              targetSection.appendChild(newCard);
+            } else {
+              // If no valid sibling found, place at top
+              targetSection.insertBefore(newCard, targetSection.firstChild);
+            }
+
+            newCard.style.transform = '';
+            newCard.style.opacity = '';
+
+            // Remove inline styles after animation
+            setTimeout(function() {
+              newCard.style.transition = '';
+            }, 300);
+          }, 50);
+
+          cardOriginalPositions.delete(cardId);
+        } else {
+          // No stored position, just move to bottom of favorites
+          var firstNonFavorite = null;
+          var cards = targetSection.querySelectorAll('.account-card');
+          for (var i = 0; i < cards.length; i++) {
+            if (cards[i].getAttribute('data-favorite') !== '1' && cards[i] !== newCard) {
+              firstNonFavorite = cards[i];
+              break;
+            }
+          }
+
+          if (firstNonFavorite) {
+            targetSection.insertBefore(newCard, firstNonFavorite);
+          }
+        }
+      }
+    }
+
+    // Handle card delete with smooth fade-out animation
+    function handleCardDelete(e) {
+      var target = e.detail.target;
+      if (!target) return;
+
+      // The target should be empty after delete, but card might still be in DOM briefly
+      // Find the card that was deleted by looking for cards being removed
+      var cardId = e.detail.pathInfo.requestPath.split('/').pop();
+      var card = document.getElementById('account-' + cardId);
+
+      if (card) {
+        // Animate fade out and scale down
+        card.style.transition = 'transform 0.3s ease-out, opacity 0.3s ease-out';
+        card.style.transform = 'scale(0.95)';
+        card.style.opacity = '0';
+
+        // Remove from DOM after animation
+        setTimeout(function() {
+          card.remove();
+
+          // Check if sections are now empty and update visibility
+          updateSectionVisibility();
+        }, 300);
+
+        // Remove from position tracking if it was favorited
+        cardOriginalPositions.delete('account-' + cardId);
+      }
+    }
+
+    // Handle card edit - maintain position
+    function handleCardEdit(e) {
+      // Find the card by ID from the DOM (robust for outerHTML swap)
+      var editPath = (e.detail.pathInfo && e.detail.pathInfo.requestPath) || e.detail.requestConfig.path || '';
+      var editAccountId = editPath.split('/')[3];
+      if (!editAccountId) return;
+
+      var newCard = document.getElementById('account-' + editAccountId);
+      if (!newCard) return;
+
+      // Add a brief highlight effect to show the card was updated
+      newCard.style.transition = 'box-shadow 0.3s ease-out';
+      newCard.style.boxShadow = '0 0 0 2px rgba(109, 158, 255, 0.5)';
+
+      setTimeout(function() {
+        newCard.style.boxShadow = '';
+        setTimeout(function() {
+          newCard.style.transition = '';
+        }, 300);
+      }, 600);
+    }
+
+    // Handle pause/resume toggle - move between sections if needed
+    function handlePauseToggle(e) {
+      // Find the card by ID from the DOM (robust for outerHTML swap)
+      var pausePath = (e.detail.pathInfo && e.detail.pathInfo.requestPath) || e.detail.requestConfig.path || '';
+      var pauseAccountId = pausePath.split('/')[3];
+      if (!pauseAccountId) return;
+
+      var newCard = document.getElementById('account-' + pauseAccountId);
+      if (!newCard) return;
+
+      var cardId = newCard.id;
+      var isPaused = newCard.getAttribute('data-paused') === '1';
+      var status = newCard.getAttribute('data-status') || 'active';
+      var isFavorite = newCard.getAttribute('data-favorite') === '1';
+
+      // Determine target section based on new status
+      var targetSection;
+      var targetSectionClass;
+      if (status === 'paused' || status === 'inactive') {
+        targetSectionClass = 'inactive-accounts-section';
+        targetSection = document.querySelector('.inactive-accounts-section');
+      } else {
+        targetSectionClass = 'active-accounts-section';
+        targetSection = document.querySelector('.active-accounts-section');
+      }
+
+      // Create section if it doesn't exist
+      if (!targetSection) {
+        var cardsGrid = document.getElementById('cards-grid');
+        if (!cardsGrid) return;
+
+        targetSection = document.createElement('div');
+        targetSection.className = 'grid gap-4 md:grid-cols-2 lg:grid-cols-3 ' + targetSectionClass;
+
+        // Insert section in the right position
+        if (targetSectionClass === 'active-accounts-section') {
+          // Insert at the beginning
+          cardsGrid.insertBefore(targetSection, cardsGrid.firstChild);
+        } else {
+          // Insert after divider or at the end
+          var divider = document.getElementById('accounts-divider');
+          if (divider) {
+            cardsGrid.insertBefore(targetSection, divider.nextSibling);
+          } else {
+            cardsGrid.appendChild(targetSection);
+          }
+        }
+
+        // Create divider if it doesn't exist and we have both sections
+        var activeSection = document.querySelector('.active-accounts-section');
+        var inactiveSection = document.querySelector('.inactive-accounts-section');
+        if (activeSection && inactiveSection && !document.getElementById('accounts-divider')) {
+          var divider = document.createElement('div');
+          divider.id = 'accounts-divider';
+          divider.className = 'relative my-8';
+          divider.innerHTML = '<div class="absolute inset-0 flex items-center">' +
+            '<div class="w-full border-t-2 border-dashed border-muted-foreground/20"></div>' +
+            '</div>' +
+            '<div class="relative flex justify-center">' +
+            '<span class="bg-background px-4 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">' +
+            'Paused/Inactive Accounts' +
+            '</span>' +
+            '</div>';
+          // Insert divider between sections
+          if (targetSectionClass === 'inactive-accounts-section') {
+            cardsGrid.insertBefore(divider, targetSection);
+          } else {
+            cardsGrid.insertBefore(divider, inactiveSection);
+          }
+        }
+      }
+
+      // Check if card needs to move to different section
+      var currentSection = newCard.parentElement;
+      if (currentSection !== targetSection) {
+        // Animate move to new section
+        newCard.style.transition = 'transform 0.3s ease-out, opacity 0.3s ease-out';
+        newCard.style.transform = 'translateY(-20px)';
+        newCard.style.opacity = '0.5';
+
+        setTimeout(function() {
+          // Insert based on favorite status
+          if (isFavorite) {
+            targetSection.insertBefore(newCard, targetSection.firstChild);
+          } else {
+            // Find first non-favorite position
+            var firstNonFavorite = null;
+            var cards = targetSection.querySelectorAll('.account-card');
+            for (var i = 0; i < cards.length; i++) {
+              if (cards[i].getAttribute('data-favorite') !== '1') {
+                firstNonFavorite = cards[i];
+                break;
+              }
+            }
+            if (firstNonFavorite) {
+              targetSection.insertBefore(newCard, firstNonFavorite);
+            } else {
+              targetSection.appendChild(newCard);
+            }
+          }
+
+          newCard.style.transform = '';
+          newCard.style.opacity = '';
+
+          setTimeout(function() {
+            newCard.style.transition = '';
+          }, 300);
+
+          // Update section visibility
+          updateSectionVisibility();
+        }, 50);
+      } else {
+        // Just add a brief highlight effect
+        newCard.style.transition = 'box-shadow 0.3s ease-out';
+        newCard.style.boxShadow = '0 0 0 2px rgba(245, 158, 11, 0.5)';
+
+        setTimeout(function() {
+          newCard.style.boxShadow = '';
+          setTimeout(function() {
+            newCard.style.transition = '';
+          }, 300);
+        }, 600);
+      }
+    }
+
+    // Update section visibility after card operations
+    function updateSectionVisibility() {
+      var activeSection = document.querySelector('.active-accounts-section');
+      var inactiveSection = document.querySelector('.inactive-accounts-section');
+      var divider = document.getElementById('accounts-divider');
+
+      if (activeSection) {
+        var activeCards = activeSection.querySelectorAll('.account-card');
+        var hasActiveCards = activeCards.length > 0;
+        activeSection.style.display = hasActiveCards ? '' : 'none';
+      }
+
+      if (inactiveSection) {
+        var inactiveCards = inactiveSection.querySelectorAll('.account-card');
+        var hasInactiveCards = inactiveCards.length > 0;
+        inactiveSection.style.display = hasInactiveCards ? '' : 'none';
+      }
+
+      if (divider) {
+        var hasActive = activeSection && activeSection.querySelectorAll('.account-card').length > 0;
+        var hasInactive = inactiveSection && inactiveSection.querySelectorAll('.account-card').length > 0;
+        divider.style.display = (hasActive && hasInactive) ? '' : 'none';
+      }
     }
 
     // Apply censor icon state on page load
