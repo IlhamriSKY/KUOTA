@@ -3,9 +3,9 @@ import { formatDate, formatRelativeTime } from "./layout.js";
 import { escapeHtml, formatNumber } from "../utils.js";
 import { PLAN_LIMITS, CLAUDE_CODE_BUDGETS } from "../db/sqlite.js";
 
-// ============================================================
+
 //  Reset date helpers
-// ============================================================
+
 function toDateString(d) {
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, "0");
@@ -89,16 +89,16 @@ function resetCountdownSection(account) {
 
 export { getNextMonthFirstDay };
 
-// ============================================================
+
 //  Plan config
-// ============================================================
+
 const PLAN_LABELS = {
   free: "Free", pro: "Pro", pro_plus: "Pro+", business: "Business", enterprise: "Enterprise",
 };
 
-// ============================================================
+
 //  Usage Bar
-// ============================================================
+
 export function usageBar(percentage, label = "Premium requests", iconName = "zap") {
   let barColor = "bg-emerald-500";
   let textCls = "text-emerald-500";
@@ -126,9 +126,9 @@ export function usageBar(percentage, label = "Premium requests", iconName = "zap
     </div>`;
 }
 
-// ============================================================
+
 //  Plan Badge
-// ============================================================
+
 export function planBadge(plan, accountType = "copilot") {
   if (accountType === "claude_code" || accountType === "claude_web") {
     const colors = {
@@ -151,9 +151,9 @@ export function planBadge(plan, accountType = "copilot") {
   return `<span class="inline-flex items-center px-1.5 py-0.5 text-[10px] font-semibold rounded ${colors[plan] || colors.pro}">${PLAN_LABELS[plan] || plan}</span>`;
 }
 
-// ============================================================
+
 //  Resolve effective login method string
-// ============================================================
+
 export function resolveLoginMethod(account) {
   const method = account.login_method || "";
   if (method) return method;
@@ -163,9 +163,9 @@ export function resolveLoginMethod(account) {
   return "pat";
 }
 
-// ============================================================
+
 //  Login Method Badge
-// ============================================================
+
 function loginMethodBadge(account) {
   const method = account.login_method || "";
   const type = account.account_type || "copilot";
@@ -194,9 +194,9 @@ function loginMethodBadge(account) {
   return `<span class="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-500 font-medium">${icon("github", 10, "inline")} GitHub Copilot</span>`;
 }
 
-// ============================================================
+
 //  Account Card (dispatches to Copilot or Claude Code)
-// ============================================================
+
 export function accountCard(account, usage, details = [], error = null) {
   if (account.account_type === "claude_code") {
     return claudeCodeAccountCard(account, usage, details, error);
@@ -222,9 +222,9 @@ function noteSection(note) {
   </div>`;
 }
 
-// ============================================================
+
 //  Copilot Activity Section (last editor session)
-// ============================================================
+
 function parseEditorString(editorStr) {
   if (!editorStr) return null;
   // Format: "vscode/1.95.0/copilot/1.86.82" or "jetbrains/2024.1" or "cli/1.0"
@@ -295,9 +295,9 @@ function copilotActivitySection(account) {
   </div>`;
 }
 
-// ============================================================
+
 //  Copilot Account Card
-// ============================================================
+
 function copilotAccountCard(account, usage, details = [], error = null) {
   const limit = PLAN_LIMITS[account.copilot_plan] || 300;
   const pct = usage ? usage.percentage : 0;
@@ -328,12 +328,18 @@ function copilotAccountCard(account, usage, details = [], error = null) {
                 ${planBadge(account.copilot_plan)}
               </div>
               <p class="text-xs text-muted-foreground censor-target">@${escapeHtml(account.github_username)}</p>
+              ${account.github_email ? `<p class="text-[11px] text-muted-foreground censor-target flex items-center gap-1 mt-0.5">${icon("mail", 10, "inline")} ${escapeHtml(account.github_email)}</p>` : ""}
             </div>
           </a>
-          <div class="flex items-center flex-shrink-0 -mr-1">
+          <div class="flex items-center flex-shrink-0 -mr-1 gap-0.5">
             <button hx-post="/api/account/${account.id}/favorite" hx-target="#account-${account.id}" hx-swap="outerHTML"
                     class="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-accent transition-colors ${isFav ? "text-amber-400" : "text-muted-foreground hover:text-amber-400"}" data-tooltip="${isFav ? "Unpin" : "Pin to top"}" aria-label="${isFav ? "Unpin" : "Pin to top"}">
               ${isFav ? icon("star-filled", 14) : icon("star", 14)}
+            </button>
+            <button hx-post="/api/account/${account.id}/pause" hx-target="#account-${account.id}" hx-swap="outerHTML"
+                    class="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-accent transition-colors ${account.is_paused ? "text-emerald-500" : "text-muted-foreground hover:text-foreground"}"
+                    data-tooltip="${account.is_paused ? "Resume auto-refresh" : "Pause auto-refresh"}" aria-label="${account.is_paused ? "Resume auto-refresh" : "Pause auto-refresh"}">
+              ${account.is_paused ? icon("play", 14) : icon("pause", 14)}
             </button>
             <button hx-post="/api/refresh/${account.id}" hx-target="#account-${account.id}" hx-swap="outerHTML"
                     class="refresh-btn inline-flex items-center justify-center w-7 h-7 rounded hover:bg-accent transition-colors text-muted-foreground hover:text-foreground" data-tooltip="Refresh" aria-label="Refresh">
@@ -377,29 +383,24 @@ function copilotAccountCard(account, usage, details = [], error = null) {
 
       ${copilotActivitySection(account)}
       ${noteSection(account.note)}
-      <div class="px-4 py-2.5 border-t flex items-center justify-between bg-muted/30 rounded-b-md mt-auto">
+      <div class="px-4 py-2.5 border-t flex flex-col sm:flex-row sm:items-center gap-2 sm:justify-between bg-muted/30 rounded-b-md mt-auto">
         <span class="text-[11px] text-muted-foreground flex items-center gap-1" data-tooltip="Last fetched">
           ${icon("clock", 10)}
           ${fetchedAt}
         </span>
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-2 flex-wrap">
           ${loginMethodBadge(account)}
           <span class="text-[11px] flex items-center gap-1 ${account.is_paused ? "text-amber-500" : account.pat_token ? "text-emerald-500" : "text-amber-500"}" data-tooltip="${account.is_paused ? "Auto-refresh paused" : account.pat_token ? "Token is valid" : "No token configured"}">
             ${account.is_paused ? icon("pause", 10) + " Paused" : account.pat_token ? icon("check-circle", 10) + " Active" : icon("alert-triangle", 10) + " No token"}
           </span>
-          <button hx-post="/api/account/${account.id}/pause" hx-target="#account-${account.id}" hx-swap="outerHTML"
-                  class="text-[11px] p-0.5 rounded hover:bg-muted transition-colors ${account.is_paused ? "text-emerald-500" : "text-muted-foreground"}"
-                  data-tooltip="${account.is_paused ? "Resume auto-refresh" : "Pause auto-refresh"}">
-            ${account.is_paused ? icon("play", 10) : icon("pause", 10)}
-          </button>
         </div>
       </div>
     </div>`;
 }
 
-// ============================================================
+
 //  Claude Web (Pro/Max) Account Card
-// ============================================================
+
 function claudeWebAccountCard(account, usage, details = [], error = null) {
   const fetchedAt = usage ? formatDate(usage.fetched_at) : "Never";
   const isFav = !!account.is_favorite;
@@ -452,10 +453,15 @@ function claudeWebAccountCard(account, usage, details = [], error = null) {
               <p class="text-xs text-muted-foreground censor-target">${escapeHtml(account.claude_user_email || account.github_username)}</p>
             </div>
           </div>
-          <div class="flex items-center flex-shrink-0 -mr-1">
+          <div class="flex items-center flex-shrink-0 -mr-1 gap-0.5">
             <button hx-post="/api/account/${account.id}/favorite" hx-target="#account-${account.id}" hx-swap="outerHTML"
                     class="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-accent transition-colors ${isFav ? "text-amber-400" : "text-muted-foreground hover:text-amber-400"}" data-tooltip="${isFav ? "Unpin" : "Pin to top"}" aria-label="${isFav ? "Unpin" : "Pin to top"}">
               ${isFav ? icon("star-filled", 14) : icon("star", 14)}
+            </button>
+            <button hx-post="/api/account/${account.id}/pause" hx-target="#account-${account.id}" hx-swap="outerHTML"
+                    class="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-accent transition-colors ${account.is_paused ? "text-emerald-500" : "text-muted-foreground hover:text-foreground"}"
+                    data-tooltip="${account.is_paused ? "Resume auto-refresh" : "Pause auto-refresh"}" aria-label="${account.is_paused ? "Resume auto-refresh" : "Pause auto-refresh"}">
+              ${account.is_paused ? icon("play", 14) : icon("pause", 14)}
             </button>
             <button hx-post="/api/refresh/${account.id}" hx-target="#account-${account.id}" hx-swap="outerHTML"
                     class="refresh-btn inline-flex items-center justify-center w-7 h-7 rounded hover:bg-accent transition-colors text-muted-foreground hover:text-foreground" data-tooltip="Refresh" aria-label="Refresh">
@@ -533,29 +539,24 @@ function claudeWebAccountCard(account, usage, details = [], error = null) {
       </div>
 
       ${noteSection(account.note)}
-      <div class="px-4 py-2.5 border-t flex items-center justify-between bg-muted/30 rounded-b-md mt-auto">
+      <div class="px-4 py-2.5 border-t flex flex-col sm:flex-row sm:items-center gap-2 sm:justify-between bg-muted/30 rounded-b-md mt-auto">
         <span class="text-[11px] text-muted-foreground flex items-center gap-1" data-tooltip="Last fetched">
           ${icon("clock", 10)}
           ${fetchedAt}
         </span>
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-2 flex-wrap">
           ${loginMethodBadge(account)}
           <span class="text-[11px] flex items-center gap-1 ${account.is_paused ? "text-amber-500" : account.pat_token ? "text-emerald-500" : "text-amber-500"}" data-tooltip="${account.is_paused ? "Auto-refresh paused" : account.pat_token ? "Session active" : "Session expired"}">
             ${account.is_paused ? icon("pause", 10) + " Paused" : account.pat_token ? icon("check-circle", 10) + " Active" : icon("alert-triangle", 10) + " Expired"}
           </span>
-          <button hx-post="/api/account/${account.id}/pause" hx-target="#account-${account.id}" hx-swap="outerHTML"
-                  class="text-[11px] p-0.5 rounded hover:bg-muted transition-colors ${account.is_paused ? "text-emerald-500" : "text-muted-foreground"}"
-                  data-tooltip="${account.is_paused ? "Resume auto-refresh" : "Pause auto-refresh"}">
-            ${account.is_paused ? icon("play", 10) : icon("pause", 10)}
-          </button>
         </div>
       </div>
     </div>`;
 }
 
-// ============================================================
+
 //  Model Table
-// ============================================================
+
 export function modelTable(details) {
   if (!details || details.length === 0) return "";
   return `
@@ -586,9 +587,9 @@ export function modelTable(details) {
     </div>`;
 }
 
-// ============================================================
+
 //  Claude Code Account Card
-// ============================================================
+
 function claudeCodeAccountCard(account, usage, details = [], error = null) {
   const budget = account.monthly_budget || CLAUDE_CODE_BUDGETS[account.claude_plan] || 100;
   const cost = usage ? usage.gross_quantity : 0; // stored as USD
@@ -623,10 +624,15 @@ function claudeCodeAccountCard(account, usage, details = [], error = null) {
               <p class="text-xs text-muted-foreground censor-target">${escapeHtml(account.claude_user_email || account.github_username)}</p>
             </div>
           </div>
-          <div class="flex items-center flex-shrink-0 -mr-1">
+          <div class="flex items-center flex-shrink-0 -mr-1 gap-0.5">
             <button hx-post="/api/account/${account.id}/favorite" hx-target="#account-${account.id}" hx-swap="outerHTML"
                     class="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-accent transition-colors ${isFav ? "text-amber-400" : "text-muted-foreground hover:text-amber-400"}" data-tooltip="${isFav ? "Unpin" : "Pin to top"}" aria-label="${isFav ? "Unpin" : "Pin to top"}">
               ${isFav ? icon("star-filled", 14) : icon("star", 14)}
+            </button>
+            <button hx-post="/api/account/${account.id}/pause" hx-target="#account-${account.id}" hx-swap="outerHTML"
+                    class="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-accent transition-colors ${account.is_paused ? "text-emerald-500" : "text-muted-foreground hover:text-foreground"}"
+                    data-tooltip="${account.is_paused ? "Resume auto-refresh" : "Pause auto-refresh"}" aria-label="${account.is_paused ? "Resume auto-refresh" : "Pause auto-refresh"}">
+              ${account.is_paused ? icon("play", 14) : icon("pause", 14)}
             </button>
             <button hx-post="/api/refresh/${account.id}" hx-target="#account-${account.id}" hx-swap="outerHTML"
                     class="refresh-btn inline-flex items-center justify-center w-7 h-7 rounded hover:bg-accent transition-colors text-muted-foreground hover:text-foreground" data-tooltip="Refresh" aria-label="Refresh">
@@ -645,7 +651,7 @@ function claudeCodeAccountCard(account, usage, details = [], error = null) {
         </div>
       </div>
       ${errorBanner(error)}
-      
+
       <div class="p-4 space-y-2.5 flex-1">
         ${costBar(pct, cost, budget)}
 
@@ -682,29 +688,24 @@ function claudeCodeAccountCard(account, usage, details = [], error = null) {
       </div>
 
       ${noteSection(account.note)}
-      <div class="px-4 py-2.5 border-t flex items-center justify-between bg-muted/30 rounded-b-md mt-auto">
+      <div class="px-4 py-2.5 border-t flex flex-col sm:flex-row sm:items-center gap-2 sm:justify-between bg-muted/30 rounded-b-md mt-auto">
         <span class="text-[11px] text-muted-foreground flex items-center gap-1" data-tooltip="Last fetched">
           ${icon("clock", 10)}
           ${fetchedAt}
         </span>
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-2 flex-wrap">
           ${loginMethodBadge(account)}
           <span class="text-[11px] flex items-center gap-1 ${account.is_paused ? "text-amber-500" : account.pat_token ? "text-emerald-500" : "text-amber-500"}" data-tooltip="${account.is_paused ? "Auto-refresh paused" : account.pat_token ? "API key set" : "No API key"}">
             ${account.is_paused ? icon("pause", 10) + " Paused" : account.pat_token ? icon("check-circle", 10) + " Active" : icon("alert-triangle", 10) + " No key"}
           </span>
-          <button hx-post="/api/account/${account.id}/pause" hx-target="#account-${account.id}" hx-swap="outerHTML"
-                  class="text-[11px] p-0.5 rounded hover:bg-muted transition-colors ${account.is_paused ? "text-emerald-500" : "text-muted-foreground"}"
-                  data-tooltip="${account.is_paused ? "Resume auto-refresh" : "Pause auto-refresh"}">
-            ${account.is_paused ? icon("play", 10) : icon("pause", 10)}
-          </button>
         </div>
       </div>
     </div>`;
 }
 
-// ============================================================
+
 //  Cost Bar (for Claude Code)
-// ============================================================
+
 export function costBar(percentage, cost, budget, label = "Monthly cost", iconName = "dollar") {
   let barColor = "bg-emerald-500";
   let textCls = "text-emerald-500";
@@ -737,9 +738,9 @@ export function costBar(percentage, cost, budget, label = "Monthly cost", iconNa
     </div>`;
 }
 
-// ============================================================
+
 //  Claude Code Model Table
-// ============================================================
+
 export function claudeModelTable(details) {
   if (!details || details.length === 0) return "";
   return `
@@ -773,9 +774,9 @@ export function claudeModelTable(details) {
     </div>`;
 }
 
-// ============================================================
+
 //  Empty State
-// ============================================================
+
 export function emptyState() {
   return `
     <div class="flex flex-col items-center justify-center py-16 fade-in">
@@ -791,9 +792,9 @@ export function emptyState() {
     </div>`;
 }
 
-// ============================================================
+
 //  Add Account Form
-// ============================================================
+
 export function addAccountForm(hasOAuthClientId) {
   return `
     <div class="max-w-lg mx-auto space-y-5">
@@ -910,10 +911,12 @@ export function addAccountForm(hasOAuthClientId) {
                 <input type="password" name="pat" id="pat-input" required placeholder="ghp_... or github_pat_..." 
                        class="input-field flex-1 px-2.5 py-1.5 bg-background border rounded text-foreground text-xs font-mono">
                 <button type="button" hx-post="/api/account/detect-orgs" hx-include="#pat-input" hx-target="#org-detect-result" hx-swap="innerHTML"
-                        class="detect-orgs-btn inline-flex items-center gap-1.5 px-3 py-1.5 bg-secondary text-foreground border rounded text-xs font-medium hover:bg-accent transition-colors whitespace-nowrap">
-                  <span class="spin-icon">${icon("spinner", 12, "animate-spin")}</span>
-                  <span class="normal-icon">${icon("search", 12)}</span>
-                  Detect
+                        class="detect-orgs-btn inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-secondary text-foreground border rounded text-xs font-medium hover:bg-accent transition-colors whitespace-nowrap">
+                  <span class="inline-flex items-center">
+                    <span class="spin-icon">${icon("spinner", 12, "animate-spin")}</span>
+                    <span class="normal-icon">${icon("search", 12)}</span>
+                  </span>
+                  <span>Detect</span>
                 </button>
               </div>
             </div>
@@ -1173,9 +1176,9 @@ export function addAccountForm(hasOAuthClientId) {
     </script>`;
 }
 
-// ============================================================
+
 //  OAuth Device Code
-// ============================================================
+
 export function oauthDeviceCode(userCode, verificationUri, flowId) {
   return `
     <div class="rounded-md bg-primary/5 border border-primary/20 p-4 fade-in space-y-3">
@@ -1196,9 +1199,9 @@ export function oauthDeviceCode(userCode, verificationUri, flowId) {
     </div>`;
 }
 
-// ============================================================
+
 //  Edit Account Form
-// ============================================================
+
 export function editAccountForm(account) {
   const isClaude = account.account_type === "claude_code";
   const isClaudeWeb = account.account_type === "claude_web";
@@ -1355,9 +1358,9 @@ export function editAccountForm(account) {
     </div>`;
 }
 
-// ============================================================
+
 //  Alert Box
-// ============================================================
+
 export function alertBox(type, message) {
   const styles = {
     success: { bg: "bg-emerald-500/10 border-emerald-500/20", text: "text-emerald-600 dark:text-emerald-400", ic: icon("check-circle", 16) },
@@ -1375,9 +1378,9 @@ export function alertBox(type, message) {
     </div>`;
 }
 
-// ============================================================
+
 //  Settings Page
-// ============================================================
+
 export function settingsPage(mysqlConfig, autoRefreshMinutes) {
   return `
     <div class="max-w-lg mx-auto space-y-5">

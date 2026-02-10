@@ -4,9 +4,52 @@ import { serveStatic } from "hono/bun";
 import pages from "./routes/pages.js";
 import api, { refreshAccount } from "./routes/api.js";
 import { getAllAccounts, getSetting } from "./db/sqlite.js";
-import { escapeHtml } from "./utils.js";
+import { escapeHtml, validatePort, sanitizeError } from "./utils.js";
+import { encrypt, decrypt } from "./services/crypto.js";
 
-// === Auto-refresh config ===
+// Startup validation
+async function validateStartup() {
+  const errors = [];
+
+  try {
+    // Validate encryption
+    const testData = "test_encryption_" + Date.now();
+    const encrypted = encrypt(testData);
+    const decrypted = decrypt(encrypted);
+
+    if (decrypted !== testData) {
+      errors.push("Encryption validation failed: decrypted data does not match original");
+    }
+  } catch (err) {
+    errors.push(`Encryption validation failed: ${err.message}`);
+  }
+
+  try {
+    // Validate database access
+    getAllAccounts();
+  } catch (err) {
+    errors.push(`Database validation failed: ${err.message}`);
+  }
+
+  // Validate PORT
+  const portEnv = process.env.PORT || "3000";
+  if (!validatePort(portEnv)) {
+    errors.push(`Invalid PORT value: ${portEnv}. Must be between 1-65535`);
+  }
+
+  if (errors.length > 0) {
+    console.error("\n❌ Startup validation failed:\n");
+    errors.forEach(err => console.error(`  - ${err}`));
+    console.error("\nPlease fix these issues before starting the server.\n");
+    process.exit(1);
+  }
+
+  console.log("✅ Startup validation passed");
+}
+
+// Run validation before starting
+await validateStartup();
+
 function getAutoRefreshMinutes() {
   const dbVal = getSetting("auto_refresh_minutes");
   if (dbVal !== null && dbVal !== undefined) return Math.max(1, parseInt(dbVal) || 60);
@@ -68,6 +111,41 @@ app.use("/manifest.json", serveStatic({ root: "./public" }));
 app.use("/sw.js", serveStatic({ root: "./public" }));
 app.use("/favicon.ico", serveStatic({ root: "./public" }));
 
+// Health check endpoints
+app.get("/health", (c) => {
+  return c.json({
+    status: "ok",
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+  });
+});
+
+app.get("/ready", (c) => {
+  try {
+    // Check database
+    getAllAccounts();
+
+    // Check encryption
+    const test = encrypt("test");
+    decrypt(test);
+
+    return c.json({
+      ready: true,
+      timestamp: new Date().toISOString(),
+      checks: {
+        database: "ok",
+        encryption: "ok",
+      }
+    });
+  } catch (err) {
+    return c.json({
+      ready: false,
+      error: sanitizeError(err.message),
+      timestamp: new Date().toISOString(),
+    }, 503);
+  }
+});
+
 // Mount routes
 app.route("/", pages);
 app.route("/api", api);
@@ -105,7 +183,6 @@ app.onError((err, c) => {
   `, 500);
 });
 
-// === Scheduled auto-refresh ===
 let autoRefreshTimer = null;
 
 function getAutoRefreshInterval() {
@@ -140,8 +217,51 @@ function startAutoRefresh() {
 startAutoRefresh();
 export { getAutoRefreshMinutes, startAutoRefresh };
 
-// === Start server ===
-const PORT = parseInt(process.env.PORT || "3000");
+let isShuttingDown = false;
+
+async function gracefulShutdown(signal) {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+
+  console.log(`\n[${signal}] Shutting down gracefully...`);
+
+  // Clear auto-refresh timer
+  if (autoRefreshTimer) {
+    clearInterval(autoRefreshTimer);
+    console.log("[Shutdown] Auto-refresh timer cleared");
+  }
+
+  // Close MySQL pool if exists
+  try {
+    const { closeMysqlPool } = await import("./db/mysql.js");
+    await closeMysqlPool();
+    console.log("[Shutdown] MySQL connections closed");
+  } catch (err) {
+    // MySQL module might not export closeMysqlPool, that's ok
+  }
+
+  console.log("[Shutdown] Cleanup complete");
+  process.exit(0);
+}
+
+// Handle shutdown signals
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+
+// Handle uncaught errors
+process.on("uncaughtException", (err) => {
+  console.error("[FATAL] Uncaught exception:", sanitizeError(err.message));
+  console.error(err.stack);
+  gracefulShutdown("UNCAUGHT_EXCEPTION");
+});
+
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("[FATAL] Unhandled rejection at:", promise);
+  console.error("Reason:", sanitizeError(String(reason)));
+  gracefulShutdown("UNHANDLED_REJECTION");
+});
+
+const PORT = validatePort(process.env.PORT || "3000") || 3000;
 
 console.log(`
 ╔══════════════════════════════════════════════╗

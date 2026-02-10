@@ -5,7 +5,7 @@ import { join } from "path";
 import { mkdirSync, existsSync, readFileSync } from "fs";
 import { accounts, usageHistory, usageDetail, appSettings } from "./schema.js";
 
-// --- Database setup ---
+// Database setup ---
 const DATA_DIR = join(import.meta.dir, "../../data");
 if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
 
@@ -15,7 +15,7 @@ sqlite.exec("PRAGMA foreign_keys = ON");
 
 const db = drizzle(sqlite);
 
-// --- Custom migration runner ---
+// Custom migration runner ---
 // Drizzle's built-in migrate() generates CREATE TABLE without IF NOT EXISTS,
 // which fails on existing databases. This custom runner patches the SQL at runtime.
 function runMigrations() {
@@ -61,7 +61,7 @@ function runMigrations() {
 
 runMigrations();
 
-// --- Schema migrations (additive) ---
+// Schema migrations (additive) ---
 // Add new columns safely for existing databases
 try { sqlite.exec("ALTER TABLE accounts ADD COLUMN login_method TEXT DEFAULT ''"); } catch {}
 try { sqlite.exec("ALTER TABLE accounts ADD COLUMN note TEXT DEFAULT ''"); } catch {}
@@ -70,19 +70,20 @@ try { sqlite.exec("ALTER TABLE accounts ADD COLUMN billing_org TEXT DEFAULT ''")
 try { sqlite.exec("ALTER TABLE accounts ADD COLUMN last_activity_at TEXT DEFAULT ''"); } catch {}
 try { sqlite.exec("ALTER TABLE accounts ADD COLUMN last_activity_editor TEXT DEFAULT ''"); } catch {}
 try { sqlite.exec("ALTER TABLE accounts ADD COLUMN reset_date TEXT DEFAULT ''"); } catch {}
+try { sqlite.exec("ALTER TABLE accounts ADD COLUMN github_email TEXT DEFAULT ''"); } catch {}
 
 
-// --- Constants ---
+// Constants ---
 export const PLAN_LIMITS = { free: 50, pro: 300, pro_plus: 1500, business: 300, enterprise: 1000 };
 export const CLAUDE_CODE_BUDGETS = { api: 100, pro: 20, max: 100, team: 150, enterprise: 500 };
 
-// --- Allowed update columns (derived from schema, excluding auto-managed fields) ---
+// Allowed update columns (derived from schema, excluding auto-managed fields) ---
 const AUTO_MANAGED = new Set(["id", "created_at", "updated_at"]);
 const ALLOWED_ACCOUNT_COLUMNS = new Set(
   Object.keys(getTableColumns(accounts)).filter(k => !AUTO_MANAGED.has(k))
 );
 
-// --- Account CRUD ---
+// Account CRUD ---
 export function getAllAccounts() {
   return db.select().from(accounts).orderBy(desc(accounts.is_favorite), asc(accounts.is_paused), asc(accounts.id)).all();
 }
@@ -143,7 +144,7 @@ export function deleteAccount(id) {
   db.delete(accounts).where(eq(accounts.id, id)).run();
 }
 
-// --- Usage History ---
+// Usage History ---
 export function upsertUsageHistory({ account_id, year, month, gross_quantity, included_quantity, net_amount, plan_limit, percentage, sessions, lines_added, lines_removed, commits, pull_requests, session_usage_pct, weekly_usage_pct, weekly_reset_at, extra_usage_enabled, extra_usage_spent, extra_usage_limit, extra_usage_balance, extra_usage_reset_at }) {
   const values = {
     account_id, year, month, gross_quantity, included_quantity, net_amount, plan_limit, percentage,
@@ -177,7 +178,7 @@ export function getLatestUsage(account_id) {
     .get();
 }
 
-// --- Usage Detail ---
+// Usage Detail ---
 export function clearUsageDetails(history_id) {
   db.delete(usageDetail).where(eq(usageDetail.history_id, history_id)).run();
 }
@@ -194,7 +195,7 @@ export function getUsageDetails(history_id) {
   return db.select().from(usageDetail).where(eq(usageDetail.history_id, history_id)).all();
 }
 
-// --- Settings ---
+// Settings ---
 export function getSetting(key) {
   const row = db.select({ value: appSettings.value }).from(appSettings).where(eq(appSettings.key, key)).get();
   return row ? row.value : null;
@@ -207,7 +208,7 @@ export function setSetting(key, value) {
   }).run();
 }
 
-// --- Export all data for sync ---
+// Export all data for sync ---
 export function getAllData() {
   return {
     accounts: db.select().from(accounts).all(),

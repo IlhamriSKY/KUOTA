@@ -115,17 +115,32 @@
   100% { box-shadow: 0 0 0 0 hsl(var(--primary) / 0); }
 }
 
+/* Detect button loading state */
 .detect-orgs-btn .spin-icon {
   display: none;
+  width: 0;
 }
 .detect-orgs-btn .normal-icon {
-  display: inline;
+  display: inline-block;
+  width: auto;
 }
 .detect-orgs-btn.htmx-request .spin-icon {
-  display: inline;
+  display: inline-block;
+  width: auto;
 }
 .detect-orgs-btn.htmx-request .normal-icon {
   display: none;
+  width: 0;
+}
+/* Prevent button width change and visual feedback during loading */
+.detect-orgs-btn {
+  min-width: 90px;
+  position: relative;
+}
+.detect-orgs-btn.htmx-request {
+  pointer-events: none;
+  opacity: 0.75;
+  cursor: not-allowed;
 }
 
 /* =============================================
@@ -166,6 +181,19 @@
 }
 .account-card[data-paused="1"]:hover {
   border-color: hsl(0 72% 55% / 0.8);
+}
+
+/* Account card header button toolbar responsive layout */
+@media (max-width: 640px) {
+  .account-card .flex.items-start.justify-between {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  .account-card .flex.items-start.justify-between > div:last-child {
+    align-self: flex-end;
+    width: 100%;
+    justify-content: flex-end;
+  }
 }
 
 .progress-fill {
@@ -224,7 +252,7 @@ select.input-field {
   position: relative;
 }
 
-/* ---- shared pseudo-element base ---- */
+/* shared pseudo-element base */
 [data-tooltip]::before,
 [data-tooltip]::after {
   position: absolute;
@@ -235,7 +263,7 @@ select.input-field {
   z-index: 200;
 }
 
-/* ---- tooltip body ---- */
+/* tooltip body */
 [data-tooltip]::before {
   content: attr(data-tooltip);
   white-space: nowrap;
@@ -254,7 +282,7 @@ select.input-field {
   speak: never;
 }
 
-/* ---- tooltip arrow (rotated square) ---- */
+/* tooltip arrow (rotated square) */
 [data-tooltip]::after {
   content: "";
   width: 8px;
@@ -335,7 +363,7 @@ select.input-field {
 }
 
 /* ============ SHOW states ============ */
-/* -- hover (with 0.2s delay) -- */
+/* hover (with 0.2s delay) */
 [data-tooltip]:hover::before,
 [data-tooltip]:hover::after {
   opacity: 1;
@@ -343,7 +371,7 @@ select.input-field {
   transition-delay: 0.2s, 0s;
 }
 
-/* -- focus-visible (keyboard, no delay) -- */
+/* focus-visible (keyboard, no delay) */
 [data-tooltip]:focus-visible::before,
 [data-tooltip]:focus-visible::after {
   opacity: 1;
@@ -351,7 +379,7 @@ select.input-field {
   transition-delay: 0.1s, 0s;
 }
 
-/* ---- suppress tooltip ---- */
+/* suppress tooltip */
 [data-tooltip].htmx-request::before,
 [data-tooltip].htmx-request::after,
 [data-tooltip][disabled]::before,
@@ -359,7 +387,7 @@ select.input-field {
   display: none;
 }
 
-/* ---- hide on pure-touch devices ---- */
+/* hide on pure-touch devices */
 @media (hover: none) {
   [data-tooltip]::before,
   [data-tooltip]::after {
@@ -379,6 +407,31 @@ select.input-field {
 /* Allow interaction on form inputs even when censored */
 [data-censored] form .censor-target {
   pointer-events: auto;
+}
+
+/* Email display styling */
+.account-card .censor-target[class*="text-[11px]"] {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* =============================================
+   Account sections (Active vs Paused/Inactive)
+   ============================================= */
+.inactive-accounts-section .account-card {
+  opacity: 0.85;
+  transition: opacity 0.2s ease;
+}
+
+.inactive-accounts-section .account-card:hover {
+  opacity: 1;
+}
+
+/* Ensure favorite cards in inactive section stand out */
+.inactive-accounts-section .account-card[data-favorite="1"] {
+  opacity: 1;
 }
 
 /* =============================================

@@ -247,10 +247,17 @@ export function layout(title, body, extraHead = "") {
       }
     });
 
-    // Copy token
+    // Copy token - reads from custom header for security
     function copyToken(accountId) {
       fetch('/api/account/' + accountId + '/token', { method: 'POST' })
-        .then(function(r) { return r.json(); })
+        .then(function(r) {
+          // Read token from custom header instead of JSON body
+          var token = r.headers.get('X-Token-Value');
+          if (token) {
+            return { token: token };
+          }
+          return r.json();
+        })
         .then(function(data) {
           if (data.token) {
             navigator.clipboard.writeText(data.token).then(function() {
@@ -375,6 +382,9 @@ export function layout(title, body, extraHead = "") {
       var cards = document.querySelectorAll('.account-card');
       var noResults = document.getElementById('no-results');
       var visible = 0;
+      var visibleActiveCount = 0;
+      var visibleInactiveCount = 0;
+
       cards.forEach(function(card) {
         var uname = (card.getAttribute('data-username') || '').toLowerCase();
         var dname = (card.getAttribute('data-displayname') || '').toLowerCase();
@@ -386,10 +396,29 @@ export function layout(title, body, extraHead = "") {
         if (matchSearch && matchLogin && matchStatus) {
           card.style.display = '';
           visible++;
+          // Track visibility per section
+          if (st === 'active') visibleActiveCount++;
+          else visibleInactiveCount++;
         } else {
           card.style.display = 'none';
         }
       });
+
+      // Show/hide sections and divider based on visibility
+      var activeSection = document.querySelector('.active-accounts-section');
+      var inactiveSection = document.querySelector('.inactive-accounts-section');
+      var divider = document.getElementById('accounts-divider');
+
+      if (activeSection) {
+        activeSection.parentElement.style.display = visibleActiveCount > 0 ? '' : 'none';
+      }
+      if (inactiveSection) {
+        inactiveSection.parentElement.style.display = visibleInactiveCount > 0 ? '' : 'none';
+      }
+      if (divider) {
+        divider.style.display = (visibleActiveCount > 0 && visibleInactiveCount > 0) ? '' : 'none';
+      }
+
       if (noResults) {
         var hasFilter = q || activeLoginFilter || activeStatusFilter;
         noResults.style.display = (visible === 0 && hasFilter) ? 'flex' : 'none';

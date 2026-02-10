@@ -9,7 +9,7 @@ import {
   User, Users, ArrowRight, ChartNoAxesColumn, Zap, Rocket, Link,
   Monitor, Search, Download, Star, Globe, Terminal,
   GitCommitHorizontal, GitPullRequest, Code, DollarSign, Eye, EyeOff,
-  FileText,
+  FileText, Mail,
   Pause, Play, CircleX,
   CalendarDays,
 } from "lucide-static";
@@ -88,6 +88,7 @@ const ICONS = {
   eye: inner(Eye),
   "eye-off": inner(EyeOff),
   "file-text": inner(FileText),
+  mail: inner(Mail),
   pause: inner(Pause),
   play: inner(Play),
   "circle-x": inner(CircleX),

@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { encrypt, decrypt } from "../services/crypto.js";
-import { getUser, getPremiumRequestUsage, getBillingUsage, parseUsageData, verifyPat, getUserOrgs, getOrgPremiumRequestUsage, getOrgBillingUsage, detectCopilotPlan, getCopilotSeatActivity } from "../services/github.js";
+import { getUser, getUserEmails, getPremiumRequestUsage, getBillingUsage, parseUsageData, verifyPat, getUserOrgs, getOrgPremiumRequestUsage, getOrgBillingUsage, detectCopilotPlan, getCopilotSeatActivity } from "../services/github.js";
 import { getClaudeCodeMonthUsage, parseClaudeCodeData, verifyAdminKey } from "../services/anthropic.js";
 import { verifyAccessToken, getClaudeWebUsage, getValidToken, readLocalCredentials, refreshAccessToken } from "../services/claudeWeb.js";
 import { formatDateNow } from "../views/layout.js";
@@ -18,48 +18,94 @@ import {
 } from "../db/sqlite.js";
 import { syncToMysql } from "../db/mysql.js";
 import { accountCard, alertBox, oauthDeviceCode, editAccountForm } from "../views/components.js";
-import { escapeHtml, parseId, validatePlan, validateClaudePlan } from "../utils.js";
+import { escapeHtml, parseId, validatePlan, validateClaudePlan, validateEmail, validateOrgName, validateNote } from "../utils.js";
 import { startAutoRefresh } from "../index.js";
 
 const api = new Hono();
 
-// --- Simple rate limiter for sensitive endpoints ---
+// Rate limiter for sensitive endpoints
 const rateLimitMap = new Map();
 const RATE_LIMIT_WINDOW = 60_000; // 1 minute
 const RATE_LIMIT_MAX = 30; // max requests per window
+const MAX_MAP_SIZE = 10_000; // Maximum entries to prevent memory exhaustion
+const CLEANUP_INTERVAL = 2 * 60_000; // Cleanup every 2 minutes
 
 function rateLimit(c, key) {
   const now = Date.now();
   const entry = rateLimitMap.get(key);
+
+  // If no entry or window expired, create new entry
   if (!entry || now - entry.start > RATE_LIMIT_WINDOW) {
     rateLimitMap.set(key, { start: now, count: 1 });
     return false;
   }
+
+  // Increment count
   entry.count++;
-  if (entry.count > RATE_LIMIT_MAX) return true;
+
+  // Check if limit exceeded
+  if (entry.count > RATE_LIMIT_MAX) {
+    return true;
+  }
+
   return false;
 }
 
-// Clean up rate limit entries every 5 minutes
-setInterval(() => {
+// Clean up expired rate limit entries
+function cleanupRateLimits() {
   const now = Date.now();
+  let deleted = 0;
+
   for (const [key, entry] of rateLimitMap) {
-    if (now - entry.start > RATE_LIMIT_WINDOW * 2) rateLimitMap.delete(key);
+    // Delete entries older than 2x window to allow for clock skew
+    if (now - entry.start > RATE_LIMIT_WINDOW * 2) {
+      rateLimitMap.delete(key);
+      deleted++;
+    }
   }
-}, 5 * 60_000);
+
+  // Log cleanup activity if entries were deleted
+  if (deleted > 0) {
+    console.log(`[Rate Limit] Cleaned up ${deleted} expired entries (${rateLimitMap.size} remaining)`);
+  }
+
+  // Safety check: if map is too large, force cleanup of oldest entries
+  if (rateLimitMap.size > MAX_MAP_SIZE) {
+    const excess = rateLimitMap.size - MAX_MAP_SIZE;
+    console.warn(`[Rate Limit] Map size exceeded ${MAX_MAP_SIZE}, force-cleaning ${excess} entries`);
+
+    // Convert to array, sort by start time, and delete oldest
+    const entries = Array.from(rateLimitMap.entries())
+      .sort((a, b) => a[1].start - b[1].start);
+
+    for (let i = 0; i < excess; i++) {
+      rateLimitMap.delete(entries[i][0]);
+    }
+  }
+}
+
+// Run cleanup periodically
+setInterval(cleanupRateLimits, CLEANUP_INTERVAL);
 
 // Rate limit middleware for mutation endpoints
 api.use("*", async (c, next) => {
   const method = c.req.method;
   if (method === "GET") return next();
-  const ip = c.req.header("x-forwarded-for") || c.req.header("x-real-ip") || "unknown";
+
+  // Get client IP with fallback chain
+  const forwarded = c.req.header("x-forwarded-for");
+  const realIp = c.req.header("x-real-ip");
+  const ip = forwarded ? forwarded.split(',')[0].trim() : realIp || "unknown";
+
   if (rateLimit(c, ip)) {
+    console.warn(`[Rate Limit] Blocked request from ${ip} (exceeded ${RATE_LIMIT_MAX} req/min)`);
     return c.html(alertBox("error", "Too many requests. Please wait a moment."), 429);
   }
+
   return next();
 });
 
-// --- Helper: render account card with latest usage data ---
+// Render account card HTML with latest usage data
 function renderCard(id, error = null) {
   const acc = getAccountById(id);
   if (!acc) return "";
@@ -68,7 +114,7 @@ function renderCard(id, error = null) {
   return accountCard({ ...acc, pat_token: !!acc.pat_token }, usage, details, error);
 }
 
-// ===================== Account Management =====================
+// Account Management =====================
 
 // Detect orgs and plan for a given PAT (used by the add form dynamically)
 api.post("/account/detect-orgs", async (c) => {
@@ -152,10 +198,13 @@ api.post("/account/add-pat", async (c) => {
     const pat = body.pat?.trim();
     // Prefer detected_plan from auto-detect, fallback to manual plan selection
     let plan = validatePlan(body.detected_plan) || validatePlan(body.plan) || "pro";
-    const note = (body.note || "").trim().slice(0, 200);
-    let billingOrg = (body.billing_org || "").trim();
+    const note = validateNote(body.note);
+    let billingOrg = body.billing_org ? validateOrgName(body.billing_org) || "" : "";
 
     if (!pat) return c.html(alertBox("error", "Token is required"));
+    if (body.billing_org && !billingOrg) {
+      return c.html(alertBox("error", "Invalid organization name format"));
+    }
 
     // Verify PAT - get user info
     let user;
@@ -165,8 +214,10 @@ api.post("/account/add-pat", async (c) => {
       return c.html(alertBox("error", "Invalid token. Make sure it's a valid Fine-grained PAT."));
     }
 
-    // Fetch orgs
+    // Fetch orgs and emails
     const orgs = await getUserOrgs(pat);
+    const emails = await getUserEmails(pat);
+    const primaryEmail = emails.find(e => e.primary)?.email || user.email || "";
 
     // Auto-detect Copilot plan
     const detected = await detectCopilotPlan(pat, user.login, orgs);
@@ -209,6 +260,7 @@ api.post("/account/add-pat", async (c) => {
     if (newAcc) {
       updateAccount(newAcc.id, {
         github_orgs: orgs.join(","),
+        github_email: primaryEmail,
         billing_org: billingOrg,
         login_method: "pat",
         note,
@@ -228,7 +280,7 @@ api.post("/account/add-pat", async (c) => {
   }
 });
 
-// ===================== Claude Code Account =====================
+// Claude Code Account =====================
 
 // Add Claude Code account via Admin API Key
 api.post("/account/add-claude", async (c) => {
@@ -236,13 +288,16 @@ api.post("/account/add-claude", async (c) => {
     const body = await c.req.parseBody();
     const name = body.name?.trim();
     const apiKey = body.api_key?.trim();
-    const userEmail = body.user_email?.trim() || "";
+    const userEmail = body.user_email ? validateEmail(body.user_email) : "";
     const plan = validateClaudePlan(body.plan) || "api";
     const budget = parseFloat(body.budget) || CLAUDE_CODE_BUDGETS[plan] || 100;
-    const noteClaudeCode = (body.note || "").trim().slice(0, 200);
+    const noteClaudeCode = validateNote(body.note);
 
     if (!name) return c.html(alertBox("error", "Display name is required"));
     if (!apiKey) return c.html(alertBox("error", "Admin API Key is required"));
+    if (body.user_email && !userEmail) {
+      return c.html(alertBox("error", "Invalid email format"));
+    }
 
     // Verify Admin API Key
     const verification = await verifyAdminKey(apiKey);
@@ -286,7 +341,7 @@ api.post("/account/add-claude", async (c) => {
   }
 });
 
-// ===================== Claude Web (Pro/Max) Account =====================
+// Claude Web (Pro/Max) Account =====================
 
 api.post("/account/add-claude-web", async (c) => {
   try {
@@ -296,7 +351,7 @@ api.post("/account/add-claude-web", async (c) => {
     let refreshToken = body.refresh_token?.trim();
     const plan = validateClaudePlan(body.plan) || "pro";
     const autoDetect = body.auto_detect === "1";
-    const noteClaudeWeb = (body.note || "").trim().slice(0, 200);
+    const noteClaudeWeb = validateNote(body.note);
 
     if (!name) return c.html(alertBox("error", "Display name is required"));
 
@@ -394,14 +449,18 @@ api.put("/account/:id", async (c) => {
   if (!acc) return c.html(alertBox("error", "Account not found"));
 
   const body = await c.req.parseBody();
-  const editNote = (body.note || "").trim().slice(0, 200);
+  const editNote = validateNote(body.note);
 
   if (acc.account_type === "claude_code") {
     // Claude Code account edit
     const newApiKey = body.api_key?.trim();
     const newPlan = validateClaudePlan(body.plan) || acc.claude_plan || "api";
     const newBudget = parseFloat(body.budget) || acc.monthly_budget || 100;
-    const newEmail = body.user_email?.trim() ?? acc.claude_user_email;
+    const newEmail = body.user_email ? (validateEmail(body.user_email) || acc.claude_user_email) : acc.claude_user_email;
+
+    if (body.user_email && !validateEmail(body.user_email)) {
+      return c.html(alertBox("error", "Invalid email format"));
+    }
 
     const updates = { claude_plan: newPlan, monthly_budget: newBudget, claude_user_email: newEmail, note: editNote };
 
@@ -498,7 +557,12 @@ api.put("/account/:id", async (c) => {
   // Copilot account edit
   const newPat = body.pat?.trim();
   let newPlan = validatePlan(body.plan) || acc.copilot_plan;
-  const newBillingOrg = body.billing_org !== undefined ? (body.billing_org || "").trim() : acc.billing_org;
+  const newBillingOrg = body.billing_org !== undefined ? (validateOrgName(body.billing_org) || "") : acc.billing_org;
+
+  // Validate billing org if provided
+  if (body.billing_org && body.billing_org.trim() && !newBillingOrg) {
+    return c.html(alertBox("error", "Invalid organization name format"));
+  }
 
   // Handle reset_date
   const newResetDate = body.reset_date !== undefined ? (body.reset_date || "").trim() : acc.reset_date;
@@ -557,7 +621,7 @@ api.delete("/account/:id", (c) => {
   return c.html(""); // Remove card from DOM
 });
 
-// ===================== Usage Refresh =====================
+// Usage Refresh =====================
 
 // Refresh single account
 api.post("/refresh/:id", async (c) => {
@@ -572,7 +636,23 @@ api.post("/refresh/:id", async (c) => {
   }
 
   try {
-    await refreshAccount(acc);
+    // Always update GitHub username, display name, avatar_url, and email for Copilot accounts
+    if (acc.account_type !== "claude_code" && acc.account_type !== "claude_web") {
+      try {
+        const user = await getUser(key);
+        const emails = await getUserEmails(key);
+        const primaryEmail = emails.find(e => e.primary)?.email || user.email || "";
+        updateAccount(id, {
+          github_username: user.login,
+          display_name: user.name || user.login,
+          avatar_url: user.avatar_url,
+          github_email: primaryEmail,
+        });
+      } catch (err) {
+        console.warn(`Failed to update GitHub user info for ${acc.github_username}:`, err.message);
+      }
+    }
+    await refreshAccount(getAccountById(id));
     // Refresh orgs for copilot accounts
     if (acc.account_type !== "claude_code" && acc.account_type !== "claude_web") {
       const orgs = await getUserOrgs(key);
@@ -592,7 +672,7 @@ api.post("/refresh-all", async (c) => {
   return c.json({ ids: activeIds });
 });
 
-// Copy token (returns decrypted token as JSON - POST for security)
+// Copy token - uses custom header to avoid logging exposure (POST for security)
 api.post("/account/:id/token", (c) => {
   const id = parseId(c.req.param("id"));
   if (id === null) return c.json({ error: "Invalid ID" }, 400);
@@ -600,7 +680,17 @@ api.post("/account/:id/token", (c) => {
   if (!acc) return c.json({ error: "Account not found" }, 404);
   const pat = decrypt(acc.pat_token);
   if (!pat) return c.json({ error: "No token stored" }, 404);
-  return c.json({ token: pat });
+
+  // Return token via custom header instead of JSON body to prevent logging exposure
+  // Client-side JavaScript will read from header and copy to clipboard
+  c.header('X-Token-Value', pat);
+  c.header('X-Content-Type-Options', 'nosniff');
+  c.header('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+
+  return c.json({
+    success: true,
+    message: "Token available in X-Token-Value header"
+  });
 });
 
 // Toggle favorite
@@ -623,7 +713,7 @@ api.post("/account/:id/pause", (c) => {
   return c.html(renderCard(id));
 });
 
-// ===================== OAuth Device Flow =====================
+// OAuth Device Flow =====================
 
 let flowCounter = 0;
 
@@ -672,6 +762,8 @@ api.get("/oauth/poll/:flowId", async (c) => {
       // Success - get user info
       const user = await getUser(result.access_token);
       const orgs = await getUserOrgs(result.access_token);
+      const emails = await getUserEmails(result.access_token);
+      const primaryEmail = emails.find(e => e.primary)?.email || user.email || "";
 
       // Try using OAuth token for billing data too
       let billingWorks = false;
@@ -695,6 +787,7 @@ api.get("/oauth/poll/:flowId", async (c) => {
           avatar_url: user.avatar_url,
           display_name: user.name || user.login,
           github_orgs: orgs.join(","),
+          github_email: primaryEmail,
           login_method: "oauth",
           copilot_plan: detectedPlan,
         };
@@ -725,6 +818,7 @@ api.get("/oauth/poll/:flowId", async (c) => {
         if (newAcc) {
           updateAccount(newAcc.id, {
             github_orgs: orgs.join(","),
+            github_email: primaryEmail,
             login_method: "oauth",
             billing_org: detectedBillingOrg,
           });
@@ -784,7 +878,7 @@ api.get("/oauth/poll/:flowId", async (c) => {
   }
 });
 
-// ===================== Settings =====================
+// Settings =====================
 
 // Save OAuth Client ID
 api.post("/settings/oauth-client", async (c) => {
@@ -843,7 +937,7 @@ api.get("/time", (c) => {
   return c.text(formatDateNow());
 });
 
-// ===================== Helpers =====================
+// Helpers =====================
 
 async function fetchAndStoreUsage(accountId, username, pat, plan, billingOrg = null) {
   const now = new Date();
@@ -1044,7 +1138,7 @@ async function fetchCopilotActivity(accountId, pat, username, billingOrg, allOrg
 // Export for use in scheduled refresh
 export { fetchAndStoreUsage, fetchCopilotActivity };
 
-// ===================== Claude Code Helpers =====================
+// Claude Code Helpers =====================
 
 async function fetchAndStoreClaudeUsage(accountId, adminKey, userEmail, budget) {
   const now = new Date();
@@ -1098,7 +1192,7 @@ async function fetchAndStoreClaudeUsage(accountId, adminKey, userEmail, budget) 
   }
 }
 
-// ===================== Claude Web (Pro/Max) Helper =====================
+// Claude Web (Pro/Max) Helper =====================
 
 async function fetchAndStoreClaudeWebUsage(accountId, accessToken) {
   const now = new Date();
@@ -1163,7 +1257,18 @@ export async function refreshAccount(acc) {
     }
     await fetchAndStoreClaudeWebUsage(acc.id, tkn.accessToken);
   } else {
-    // For copilot accounts, just fetch usage with current plan settings
+    // For copilot accounts: update GitHub user info, then fetch usage
+    try {
+      const user = await getUser(key);
+      updateAccount(acc.id, {
+        github_username: user.login,
+        display_name: user.name || user.login,
+        avatar_url: user.avatar_url,
+      });
+    } catch (err) {
+      console.warn(`Failed to update GitHub user info for ${acc.github_username}:`, err.message);
+    }
+
     // Plan detection only happens on add/edit, not during auto-refresh
     // to avoid inconsistent results from API permission variations
     let billingOrg = acc.billing_org || "";
@@ -1175,6 +1280,14 @@ export async function refreshAccount(acc) {
         billingOrg = orgs[0];
         updateAccount(acc.id, { billing_org: billingOrg });
       }
+    }
+
+    // Refresh orgs list
+    try {
+      const orgs = await getUserOrgs(key);
+      updateAccount(acc.id, { github_orgs: orgs.join(",") });
+    } catch (err) {
+      console.warn(`Failed to refresh orgs for ${acc.github_username}:`, err.message);
     }
 
     await fetchAndStoreUsage(acc.id, acc.github_username, key, acc.copilot_plan, billingOrg);

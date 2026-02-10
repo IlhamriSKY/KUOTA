@@ -5,7 +5,7 @@ import { sql } from "drizzle-orm";
 import { getSetting } from "./sqlite.js";
 import { decrypt } from "../services/crypto.js";
 
-// --- MySQL Schema (mirrors SQLite schema with MySQL-specific types) ---
+// MySQL Schema (mirrors SQLite schema with MySQL-specific types) ---
 // Only syncs public data - no tokens/secrets stored in MySQL.
 const mysqlAccounts = mysqlTable("accounts", {
   id: int("id").primaryKey(),
@@ -61,26 +61,56 @@ export function getMysqlConfig() {
 async function ensurePool() {
   if (pool) return true;
   const config = getMysqlConfig();
+
   try {
     const dbName = config.database.replace(/[^a-zA-Z0-9_]/g, "");
     if (!dbName) throw new Error("Invalid database name");
 
+    // Create temporary connection with timeout
     const tempConn = await mysql.createConnection({
-      host: config.host, port: config.port, user: config.user, password: config.password,
+      host: config.host,
+      port: config.port,
+      user: config.user,
+      password: config.password,
+      connectTimeout: 10000, // 10 second connection timeout
     });
+
     await tempConn.execute(`CREATE DATABASE IF NOT EXISTS \`${dbName}\``);
     await tempConn.end();
 
-    pool = mysql.createPool({ ...config, waitForConnections: true, connectionLimit: 5, queueLimit: 0 });
+    // Create connection pool with hardened settings
+    pool = mysql.createPool({
+      ...config,
+      waitForConnections: true,
+      connectionLimit: 10, // Increased from 5 for better concurrency
+      queueLimit: 100, // Bounded queue (was unbounded with 0)
+      connectTimeout: 10000, // 10 second timeout
+      acquireTimeout: 10000, // 10 second timeout to acquire connection from pool
+      timeout: 10000, // 10 second timeout for queries
+      enableKeepAlive: true,
+      keepAliveInitialDelay: 0,
+      maxIdle: 5, // Max idle connections
+      idleTimeout: 60000, // Close idle connections after 1 minute
+    });
+
     mysqlDb = drizzle(pool);
+
+    // Test connection
+    const testConn = await pool.getConnection();
+    await testConn.ping();
+    testConn.release();
+
+    console.log(`[MySQL] Connected to ${config.host}:${config.port}/${dbName}`);
     return true;
   } catch (err) {
-    console.error("MySQL connection failed:", err.message);
+    console.error("[MySQL] Connection failed:", err.message);
+    pool = null;
+    mysqlDb = null;
     return false;
   }
 }
 
-// --- DDL: Create tables from Drizzle schema definitions ---
+// DDL: Create tables from Drizzle schema definitions ---
 // Raw DDL is required here because MySQL connection is dynamic (configured at runtime).
 // These definitions mirror the mysqlTable schemas above.
 const CREATE_TABLES = [
@@ -113,6 +143,22 @@ async function ensureTables() {
   } catch (err) {
     console.error("MySQL table creation failed:", err.message);
     return false;
+  }
+}
+
+/**
+ * Close MySQL connection pool gracefully
+ */
+export async function closeMysqlPool() {
+  if (pool) {
+    try {
+      await pool.end();
+      pool = null;
+      mysqlDb = null;
+      console.log("[MySQL] Connection pool closed");
+    } catch (err) {
+      console.error("[MySQL] Error closing pool:", err.message);
+    }
   }
 }
 

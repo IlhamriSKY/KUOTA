@@ -1,10 +1,11 @@
 import { sqliteTable, text, integer, real, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { sql } from "drizzle-orm";
 
-// --- Accounts ---
+// Accounts ---
 export const accounts = sqliteTable("accounts", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   github_username: text("github_username").notNull().unique(),
+  github_email: text("github_email").default(""),
   avatar_url: text("avatar_url").default(""),
   display_name: text("display_name").default(""),
   oauth_token: text("oauth_token").default(""),
@@ -30,7 +31,7 @@ export const accounts = sqliteTable("accounts", {
   updated_at: text("updated_at").default(sql`(datetime('now'))`),
 });
 
-// --- Usage History ---
+// Usage History ---
 export const usageHistory = sqliteTable("usage_history", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   account_id: integer("account_id").notNull().references(() => accounts.id, { onDelete: "cascade" }),
@@ -59,7 +60,7 @@ export const usageHistory = sqliteTable("usage_history", {
   accountPeriodUnique: uniqueIndex("uq_account_period").on(table.account_id, table.year, table.month),
 }));
 
-// --- Usage Detail ---
+// Usage Detail ---
 export const usageDetail = sqliteTable("usage_detail", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   history_id: integer("history_id").notNull().references(() => usageHistory.id, { onDelete: "cascade" }),
@@ -73,7 +74,7 @@ export const usageDetail = sqliteTable("usage_detail", {
   cache_creation_tokens: integer("cache_creation_tokens").default(0),
 });
 
-// --- App Settings ---
+// App Settings ---
 export const appSettings = sqliteTable("app_settings", {
   key: text("key").primaryKey(),
   value: text("value").default(""),

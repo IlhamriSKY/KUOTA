@@ -1,17 +1,44 @@
-// Anthropic Claude Code Analytics API
-// Requires an Admin API Key (sk-ant-admin...) from Anthropic Console
-// Docs: https://platform.claude.com/docs/en/build-with-claude/claude-code-analytics-api
+// Claude Code Analytics API client
+// Requires Admin API Key from Anthropic Console
+// Documentation: https://platform.claude.com/docs/en/build-with-claude/claude-code-analytics-api
 
 const API = "https://api.anthropic.com";
 const HEADERS_BASE = {
   "anthropic-version": "2023-06-01",
 };
 
+// Default timeout for API requests (10 seconds)
+const DEFAULT_TIMEOUT = 10000;
+
 function headers(adminKey) {
   return { ...HEADERS_BASE, "x-api-key": adminKey };
 }
 
-// Fetch one day's Claude Code analytics (handles pagination)
+/**
+ * Fetch with timeout support
+ * @param {string} url - URL to fetch
+ * @param {object} options - Fetch options
+ * @param {number} timeoutMs - Timeout in milliseconds
+ * @returns {Promise<Response>}
+ */
+async function fetchWithTimeout(url, options = {}, timeoutMs = DEFAULT_TIMEOUT) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    clearTimeout(timeout);
+    return response;
+  } catch (err) {
+    clearTimeout(timeout);
+    if (err.name === 'AbortError') {
+      throw new Error(`Request timeout after ${timeoutMs}ms`);
+    }
+    throw err;
+  }
+}
+
+// Fetch Claude Code analytics for a single day with automatic pagination
 async function fetchDayData(adminKey, dateStr) {
   const allData = [];
   let page = null;
@@ -21,7 +48,7 @@ async function fetchDayData(adminKey, dateStr) {
     const params = new URLSearchParams({ starting_at: dateStr, limit: "1000" });
     if (page) params.set("page", page);
 
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       `${API}/v1/organizations/usage_report/claude_code?${params}`,
       { headers: headers(adminKey) }
     );
@@ -145,7 +172,7 @@ export function parseClaudeCodeData(dailyData, userEmail = null) {
 export async function verifyAdminKey(adminKey) {
   try {
     const today = new Date().toISOString().split("T")[0];
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       `${API}/v1/organizations/usage_report/claude_code?starting_at=${today}&limit=1`,
       { headers: headers(adminKey) }
     );

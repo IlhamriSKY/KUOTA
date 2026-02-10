@@ -4,21 +4,60 @@ const HEADERS_BASE = {
   "X-GitHub-Api-Version": "2022-11-28",
 };
 
+// Default timeout for API requests (10 seconds)
+const DEFAULT_TIMEOUT = 10000;
+
 function headers(token) {
   return { ...HEADERS_BASE, Authorization: `Bearer ${token}` };
 }
 
-// Get authenticated user info
+/**
+ * Fetch with timeout support
+ * @param {string} url - URL to fetch
+ * @param {object} options - Fetch options
+ * @param {number} timeoutMs - Timeout in milliseconds
+ * @returns {Promise<Response>}
+ */
+async function fetchWithTimeout(url, options = {}, timeoutMs = DEFAULT_TIMEOUT) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    clearTimeout(timeout);
+    return response;
+  } catch (err) {
+    clearTimeout(timeout);
+    if (err.name === 'AbortError') {
+      throw new Error(`Request timeout after ${timeoutMs}ms`);
+    }
+    throw err;
+  }
+}
+
+// Fetch authenticated user profile from GitHub
 export async function getUser(token) {
-  const res = await fetch(`${API}/user`, { headers: headers(token) });
+  const res = await fetchWithTimeout(`${API}/user`, { headers: headers(token) });
   if (!res.ok) throw new Error(`GitHub /user failed: ${res.status} ${await res.text()}`);
   return res.json();
 }
 
-// Get premium request usage for a user (needs fine-grained PAT with Plan:read)
+// Fetch user's email addresses from GitHub
+// Requires user:email scope on the token
+export async function getUserEmails(token) {
+  const res = await fetchWithTimeout(`${API}/user/emails`, { headers: headers(token) });
+  if (!res.ok) {
+    // If endpoint fails (no scope or other error), return empty array
+    return [];
+  }
+  return res.json();
+}
+
+// Fetch user's premium request usage data
+// Requires fine-grained PAT with Plan:read permission
 export async function getPremiumRequestUsage(token, username, year, month) {
   const url = `${API}/users/${username}/settings/billing/premium_request/usage?year=${year}&month=${month}`;
-  const res = await fetch(url, { headers: headers(token) });
+  const res = await fetchWithTimeout(url, { headers: headers(token) });
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`Billing API failed: ${res.status} ${text}`);
@@ -26,10 +65,10 @@ export async function getPremiumRequestUsage(token, username, year, month) {
   return res.json();
 }
 
-// Get general billing usage
+// Fetch user's general billing usage
 export async function getBillingUsage(token, username, year, month) {
   const url = `${API}/users/${username}/settings/billing/usage?year=${year}&month=${month}`;
-  const res = await fetch(url, { headers: headers(token) });
+  const res = await fetchWithTimeout(url, { headers: headers(token) });
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`Billing usage API failed: ${res.status} ${text}`);
@@ -37,7 +76,7 @@ export async function getBillingUsage(token, username, year, month) {
   return res.json();
 }
 
-// Parse usage data into structured format
+// Parse raw usage data into structured format
 export function parseUsageData(data, planLimit) {
   const items = (data.usageItems || []).filter(
     (i) => i.product && i.product.toLowerCase() === "copilot"
@@ -80,11 +119,12 @@ export function parseUsageData(data, planLimit) {
   };
 }
 
-// Get org premium request usage (needs fine-grained PAT with org Administration:read)
+// Fetch organization's premium request usage data
+// Requires fine-grained PAT with Organization Administration:read permission
 export async function getOrgPremiumRequestUsage(token, org, year, month, username = null) {
   let url = `${API}/organizations/${org}/settings/billing/premium_request/usage?year=${year}&month=${month}`;
   if (username) url += `&user=${username}`;
-  const res = await fetch(url, { headers: headers(token) });
+  const res = await fetchWithTimeout(url, { headers: headers(token) });
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`Org billing API failed for ${org}: ${res.status} ${text}`);
@@ -92,10 +132,10 @@ export async function getOrgPremiumRequestUsage(token, org, year, month, usernam
   return res.json();
 }
 
-// Get org general billing usage
+// Fetch organization's general billing usage
 export async function getOrgBillingUsage(token, org, year, month) {
   const url = `${API}/organizations/${org}/settings/billing/usage?year=${year}&month=${month}`;
-  const res = await fetch(url, { headers: headers(token) });
+  const res = await fetchWithTimeout(url, { headers: headers(token) });
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`Org billing usage API failed for ${org}: ${res.status} ${text}`);
@@ -103,10 +143,10 @@ export async function getOrgBillingUsage(token, org, year, month) {
   return res.json();
 }
 
-// Get user's organizations
+// Fetch list of organizations the user belongs to
 export async function getUserOrgs(token) {
   try {
-    const res = await fetch(`${API}/user/orgs?per_page=100`, { headers: headers(token) });
+    const res = await fetchWithTimeout(`${API}/user/orgs?per_page=100`, { headers: headers(token) });
     if (!res.ok) return [];
     const orgs = await res.json();
     return orgs.map((o) => o.login);
@@ -115,8 +155,8 @@ export async function getUserOrgs(token) {
   }
 }
 
-// Detect the user's actual Copilot plan via API
-// Returns: { plan: "free"|"pro"|"pro_plus"|"business"|"enterprise"|null, source: "org"|"user"|"none", org?: string }
+// Auto-detect user's Copilot plan by inspecting GitHub billing data
+// Returns object with plan type, source, and organization if applicable
 export async function detectCopilotPlan(token, username, orgs = []) {
   const now = new Date();
   const year = now.getFullYear();
@@ -125,7 +165,7 @@ export async function detectCopilotPlan(token, username, orgs = []) {
   // 1. Try org-level: check user's seat in each org
   for (const org of orgs) {
     try {
-      const res = await fetch(`${API}/orgs/${org}/members/${username}/copilot`, { headers: headers(token) });
+      const res = await fetchWithTimeout(`${API}/orgs/${org}/members/${username}/copilot`, { headers: headers(token) });
       if (res.ok) {
         const data = await res.json();
         if (data.plan_type) {
@@ -136,7 +176,7 @@ export async function detectCopilotPlan(token, username, orgs = []) {
 
     // Fallback: check org copilot billing info
     try {
-      const res = await fetch(`${API}/orgs/${org}/copilot/billing`, { headers: headers(token) });
+      const res = await fetchWithTimeout(`${API}/orgs/${org}/copilot/billing`, { headers: headers(token) });
       if (res.ok) {
         const data = await res.json();
         if (data.plan_type) {
@@ -148,7 +188,7 @@ export async function detectCopilotPlan(token, username, orgs = []) {
 
   // 2. Try user-level billing to detect personal plans
   try {
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       `${API}/users/${username}/settings/billing/premium_request/usage?year=${year}&month=${month}`,
       { headers: headers(token) }
     );
@@ -198,12 +238,12 @@ export async function detectCopilotPlan(token, username, orgs = []) {
   }
 }
 
-// Get Copilot seat activity for a user in an org
-// Returns: { last_activity_at, last_activity_editor } or null
+// Fetch Copilot seat activity info for a user in an organization
+// Returns last activity timestamp and editor, or null if not found
 export async function getCopilotSeatActivity(token, org, username) {
   try {
     // Try single-user endpoint first
-    const res = await fetch(`${API}/orgs/${org}/members/${username}/copilot`, { headers: headers(token) });
+    const res = await fetchWithTimeout(`${API}/orgs/${org}/members/${username}/copilot`, { headers: headers(token) });
     if (res.ok) {
       const data = await res.json();
       return {
@@ -215,7 +255,7 @@ export async function getCopilotSeatActivity(token, org, username) {
 
   // Fallback: scan seats list
   try {
-    const res = await fetch(`${API}/orgs/${org}/copilot/billing/seats?per_page=100`, { headers: headers(token) });
+    const res = await fetchWithTimeout(`${API}/orgs/${org}/copilot/billing/seats?per_page=100`, { headers: headers(token) });
     if (res.ok) {
       const data = await res.json();
       const seats = data.seats || [];
@@ -232,7 +272,7 @@ export async function getCopilotSeatActivity(token, org, username) {
   return null;
 }
 
-// Verify a PAT can access billing (user-level or org-level)
+// Verify PAT has billing access at user or organization level
 export async function verifyPat(token, username) {
   const now = new Date();
   const year = now.getFullYear();

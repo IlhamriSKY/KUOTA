@@ -26,7 +26,9 @@ export function renderDashboard() {
   let activeCount = 0;
   let pausedCount = 0;
   let inactiveCount = 0;
-  const cards = [];
+  const activeCards = [];
+  const pausedCards = [];
+  const inactiveCards = [];
   const loginMethodCounts = {};
 
   for (const acc of accounts) {
@@ -35,7 +37,10 @@ export function renderDashboard() {
 
     // Track status counts
     const hasPat = !!acc.pat_token;
-    if (acc.is_paused) {
+    const isFavorite = !!acc.is_favorite;
+    const isPaused = !!acc.is_paused;
+
+    if (isPaused) {
       pausedCount++;
     } else if (hasPat) {
       activeCount++;
@@ -44,7 +49,7 @@ export function renderDashboard() {
     }
 
     // Only include active accounts in Overall Usage
-    const isActive = !acc.is_paused && hasPat;
+    const isActive = !isPaused && hasPat;
 
     if (acc.account_type === "claude_code") {
       if (isActive) {
@@ -71,7 +76,15 @@ export function renderDashboard() {
     const lm = resolveLoginMethod(acc);
     loginMethodCounts[lm] = (loginMethodCounts[lm] || 0) + 1;
 
-    cards.push(accountCard({ ...acc, pat_token: hasPat }, usage, details));
+    // Categorize cards by status, but favorites always go to their respective active category
+    const card = accountCard({ ...acc, pat_token: hasPat }, usage, details);
+    if (isPaused) {
+      pausedCards.push(card);
+    } else if (hasPat) {
+      activeCards.push(card);
+    } else {
+      inactiveCards.push(card);
+    }
   }
 
   const copilotPct = copilotLimit > 0 ? (copilotUsed / copilotLimit) * 100 : 0;
@@ -142,7 +155,7 @@ export function renderDashboard() {
   const filterSection = hasMultipleFilters ? `
       <!-- Filters -->
       <div class="flex items-center gap-2 flex-wrap" id="login-filters">
-        <span class="text-xs text-muted-foreground font-medium mr-0.5">${icon("filter", 12, "inline")} Filter:</span>
+        <span class="text-xs text-muted-foreground font-medium mr-0.5">Filter:</span>
         ${filterBadgesHtml}
         ${(Object.keys(loginMethodCounts).length > 1 && hasMultipleStatuses) ? '<span class="text-muted-foreground/30 text-xs">|</span>' : ""}
         ${hasMultipleStatuses ? statusBadgesHtml : ""}
@@ -240,8 +253,31 @@ export function renderDashboard() {
       </div>
 
       <!-- Cards -->
-      <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3" id="cards-grid">
-        ${cards.join("\n")}
+      <div id="cards-grid">
+        ${activeCards.length > 0 ? `
+          <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3 active-accounts-section">
+            ${activeCards.join("\n")}
+          </div>
+        ` : ""}
+
+        ${activeCards.length > 0 && (pausedCards.length > 0 || inactiveCards.length > 0) ? `
+          <div class="relative my-8" id="accounts-divider">
+            <div class="absolute inset-0 flex items-center">
+              <div class="w-full border-t-2 border-dashed border-muted-foreground/20"></div>
+            </div>
+            <div class="relative flex justify-center">
+              <span class="bg-background px-4 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                ${pausedCards.length + inactiveCards.length} Paused/Inactive Account${pausedCards.length + inactiveCards.length > 1 ? "s" : ""}
+              </span>
+            </div>
+          </div>
+        ` : ""}
+
+        ${(pausedCards.length > 0 || inactiveCards.length > 0) ? `
+          <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3 inactive-accounts-section">
+            ${[...pausedCards, ...inactiveCards].join("\n")}
+          </div>
+        ` : ""}
       </div>
 
       <div id="no-results" class="hidden flex flex-col items-center justify-center text-center py-12">
