@@ -552,6 +552,36 @@ export function layout(title, body, extraHead = "") {
         });
       }
     };
+
+    // Account menu dropdown
+    window.toggleAccountMenu = function(accountId) {
+      var menu = document.getElementById('menu-' + accountId);
+      if (!menu) return;
+
+      var isHidden = menu.classList.contains('hidden');
+
+      // Close all other menus first
+      document.querySelectorAll('.account-menu-dropdown').forEach(function(m) {
+        if (m !== menu) m.classList.add('hidden');
+      });
+
+      // Toggle current menu
+      if (isHidden) {
+        menu.classList.remove('hidden');
+      } else {
+        menu.classList.add('hidden');
+      }
+    };
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', function(e) {
+      // If click is not on a menu button or inside a menu
+      if (!e.target.closest('.account-menu')) {
+        document.querySelectorAll('.account-menu-dropdown').forEach(function(menu) {
+          menu.classList.add('hidden');
+        });
+      }
+    });
   </script>
 
 </body>

@@ -11,7 +11,7 @@ import {
   GitCommitHorizontal, GitPullRequest, Code, DollarSign, Eye, EyeOff,
   FileText, Mail,
   Pause, Play, CircleX,
-  CalendarDays,
+  CalendarDays, MoreVertical,
 } from "lucide-static";
 
 const BASE = 'fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"';
@@ -46,6 +46,7 @@ const ICONS = {
   close: inner(X),
   save: inner(Save),
   copy: inner(Copy),
+  "more-vertical": inner(MoreVertical),
 
   // ── Theme (Lucide) ──
   sun: inner(Sun),

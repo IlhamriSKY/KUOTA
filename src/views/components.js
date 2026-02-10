@@ -318,17 +318,17 @@ function copilotAccountCard(account, usage, details = [], error = null) {
       <div class="p-4 pb-0">
         <div class="flex items-start justify-between gap-2">
           <a href="https://github.com/${escapeHtml(account.github_username)}" target="_blank" rel="noopener noreferrer" class="flex items-center gap-2.5 min-w-0 group">
-            <img src="${escapeHtml(account.avatar_url || `https://github.com/${account.github_username}.png?size=80`)}" 
-                 alt="${escapeHtml(account.github_username)}" 
-                 class="w-9 h-9 rounded-full border flex-shrink-0 censor-target group-hover:ring-2 ring-primary/50 transition-all" 
+            <img src="${escapeHtml(account.avatar_url || `https://github.com/${account.github_username}.png?size=80`)}"
+                 alt="${escapeHtml(account.github_username)}"
+                 class="w-9 h-9 rounded-full border flex-shrink-0 censor-target group-hover:ring-2 ring-primary/50 transition-all"
                  onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23888%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22><path d=%22M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2%22/><circle cx=%2212%22 cy=%227%22 r=%224%22/></svg>'">
-            <div class="min-w-0">
+            <div class="min-w-0 flex-1">
               <div class="flex items-center gap-1.5 flex-wrap">
                 <h3 class="text-sm font-semibold text-foreground truncate censor-target group-hover:text-primary transition-colors">${escapeHtml(account.display_name || account.github_username)}</h3>
                 ${planBadge(account.copilot_plan)}
               </div>
-              <p class="text-xs text-muted-foreground censor-target">@${escapeHtml(account.github_username)}</p>
-              ${account.github_email ? `<p class="text-[11px] text-muted-foreground censor-target flex items-center gap-1 mt-0.5">${icon("mail", 10, "inline")} ${escapeHtml(account.github_email)}</p>` : ""}
+              <p class="text-xs text-muted-foreground censor-target truncate">@${escapeHtml(account.github_username)}</p>
+              ${account.github_email ? `<p class="text-[11px] text-muted-foreground censor-target truncate mt-0.5 flex items-center gap-1"><span class="flex-shrink-0">${icon("mail", 10, "inline")}</span><span class="truncate">${escapeHtml(account.github_email)}</span></p>` : ""}
             </div>
           </a>
           <div class="flex items-center flex-shrink-0 -mr-1 gap-0.5">
@@ -336,28 +336,39 @@ function copilotAccountCard(account, usage, details = [], error = null) {
                     class="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-accent transition-colors ${isFav ? "text-amber-400" : "text-muted-foreground hover:text-amber-400"}" data-tooltip="${isFav ? "Unpin" : "Pin to top"}" aria-label="${isFav ? "Unpin" : "Pin to top"}">
               ${isFav ? icon("star-filled", 14) : icon("star", 14)}
             </button>
-            <button hx-post="/api/account/${account.id}/pause" hx-target="#account-${account.id}" hx-swap="outerHTML"
-                    class="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-accent transition-colors ${account.is_paused ? "text-emerald-500" : "text-muted-foreground hover:text-foreground"}"
-                    data-tooltip="${account.is_paused ? "Resume auto-refresh" : "Pause auto-refresh"}" aria-label="${account.is_paused ? "Resume auto-refresh" : "Pause auto-refresh"}">
-              ${account.is_paused ? icon("play", 14) : icon("pause", 14)}
-            </button>
             <button hx-post="/api/refresh/${account.id}" hx-target="#account-${account.id}" hx-swap="outerHTML"
                     class="refresh-btn inline-flex items-center justify-center w-7 h-7 rounded hover:bg-accent transition-colors text-muted-foreground hover:text-foreground" data-tooltip="Refresh" aria-label="Refresh">
               <span class="spin-icon">${icon("spinner", 14, "animate-spin")}</span>
               <span class="normal-icon">${icon("refresh", 14)}</span>
             </button>
-            <button hx-get="/api/account/${account.id}/edit" hx-target="#account-${account.id}" hx-swap="outerHTML"
-                    class="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-accent transition-colors text-muted-foreground hover:text-foreground" data-tooltip="Edit" aria-label="Edit">
-              ${icon("edit", 14)}
-            </button>
             <button onclick="copyToken(${account.id})"
                     class="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-accent transition-colors text-muted-foreground hover:text-foreground" data-tooltip="Copy token" aria-label="Copy token">
               ${icon("copy", 14)}
             </button>
-            <button onclick="openDeleteModal('${escapeHtml(account.github_username)}', ${account.id})"
-                    class="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-red-400/10 transition-colors text-muted-foreground hover:text-red-400" data-tooltip="Remove" aria-label="Remove">
-              ${icon("trash", 14)}
-            </button>
+            <div class="relative account-menu">
+              <button onclick="toggleAccountMenu(${account.id})"
+                      class="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-accent transition-colors text-muted-foreground hover:text-foreground" data-tooltip="More actions" aria-label="More actions">
+                ${icon("more-vertical", 14)}
+              </button>
+              <div id="menu-${account.id}" class="account-menu-dropdown hidden absolute right-0 mt-1 w-40 bg-popover border rounded-md shadow-lg z-50">
+                <button hx-post="/api/account/${account.id}/pause" hx-target="#account-${account.id}" hx-swap="outerHTML"
+                        class="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-accent transition-colors ${account.is_paused ? "text-emerald-500" : "text-foreground"}">
+                  ${account.is_paused ? icon("play", 12) : icon("pause", 12)}
+                  ${account.is_paused ? "Resume" : "Pause"}
+                </button>
+                <button hx-get="/api/account/${account.id}/edit" hx-target="#account-${account.id}" hx-swap="outerHTML"
+                        class="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-accent transition-colors text-foreground">
+                  ${icon("edit", 12)}
+                  Edit
+                </button>
+                <div class="border-t my-1"></div>
+                <button onclick="openDeleteModal('${escapeHtml(account.github_username)}', ${account.id})"
+                        class="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-red-400/10 transition-colors text-red-400">
+                  ${icon("trash", 12)}
+                  Remove
+                </button>
+              </div>
+            </div>
           </div>
         </div>
         ${orgs.length > 0 ? `<div class="flex items-center gap-1.5 mt-2 flex-wrap censor-target">${orgs.map(o => {
@@ -441,16 +452,16 @@ function claudeWebAccountCard(account, usage, details = [], error = null) {
          data-loginmethod="${resolveLoginMethod(account)}">
       <div class="p-4 pb-0">
         <div class="flex items-start justify-between gap-2">
-          <div class="flex items-center gap-2.5 min-w-0">
+          <div class="flex items-center gap-2.5 min-w-0 flex-1">
             <div class="w-9 h-9 rounded-full border flex-shrink-0 bg-[#D97757]/10 flex items-center justify-center text-[#D97757]">
               ${icon("claude", 20)}
             </div>
-            <div class="min-w-0">
+            <div class="min-w-0 flex-1">
               <div class="flex items-center gap-1.5 flex-wrap">
                 <h3 class="text-sm font-semibold text-foreground truncate censor-target">${escapeHtml(account.display_name || account.github_username)}</h3>
                 ${planBadge(account.claude_plan || "pro", "claude_web")}
               </div>
-              <p class="text-xs text-muted-foreground censor-target">${escapeHtml(account.claude_user_email || account.github_username)}</p>
+              <p class="text-xs text-muted-foreground censor-target truncate">${escapeHtml(account.claude_user_email || account.github_username)}</p>
             </div>
           </div>
           <div class="flex items-center flex-shrink-0 -mr-1 gap-0.5">
@@ -458,24 +469,35 @@ function claudeWebAccountCard(account, usage, details = [], error = null) {
                     class="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-accent transition-colors ${isFav ? "text-amber-400" : "text-muted-foreground hover:text-amber-400"}" data-tooltip="${isFav ? "Unpin" : "Pin to top"}" aria-label="${isFav ? "Unpin" : "Pin to top"}">
               ${isFav ? icon("star-filled", 14) : icon("star", 14)}
             </button>
-            <button hx-post="/api/account/${account.id}/pause" hx-target="#account-${account.id}" hx-swap="outerHTML"
-                    class="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-accent transition-colors ${account.is_paused ? "text-emerald-500" : "text-muted-foreground hover:text-foreground"}"
-                    data-tooltip="${account.is_paused ? "Resume auto-refresh" : "Pause auto-refresh"}" aria-label="${account.is_paused ? "Resume auto-refresh" : "Pause auto-refresh"}">
-              ${account.is_paused ? icon("play", 14) : icon("pause", 14)}
-            </button>
             <button hx-post="/api/refresh/${account.id}" hx-target="#account-${account.id}" hx-swap="outerHTML"
                     class="refresh-btn inline-flex items-center justify-center w-7 h-7 rounded hover:bg-accent transition-colors text-muted-foreground hover:text-foreground" data-tooltip="Refresh" aria-label="Refresh">
               <span class="spin-icon">${icon("spinner", 14, "animate-spin")}</span>
               <span class="normal-icon">${icon("refresh", 14)}</span>
             </button>
-            <button hx-get="/api/account/${account.id}/edit" hx-target="#account-${account.id}" hx-swap="outerHTML"
-                    class="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-accent transition-colors text-muted-foreground hover:text-foreground" data-tooltip="Edit" aria-label="Edit">
-              ${icon("edit", 14)}
-            </button>
-            <button onclick="openDeleteModal('${escapeHtml(account.github_username)}', ${account.id})"
-                    class="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-red-400/10 transition-colors text-muted-foreground hover:text-red-400" data-tooltip="Remove" aria-label="Remove">
-              ${icon("trash", 14)}
-            </button>
+            <div class="relative account-menu">
+              <button onclick="toggleAccountMenu(${account.id})"
+                      class="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-accent transition-colors text-muted-foreground hover:text-foreground" data-tooltip="More actions" aria-label="More actions">
+                ${icon("more-vertical", 14)}
+              </button>
+              <div id="menu-${account.id}" class="account-menu-dropdown hidden absolute right-0 mt-1 w-40 bg-popover border rounded-md shadow-lg z-50">
+                <button hx-post="/api/account/${account.id}/pause" hx-target="#account-${account.id}" hx-swap="outerHTML"
+                        class="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-accent transition-colors ${account.is_paused ? "text-emerald-500" : "text-foreground"}">
+                  ${account.is_paused ? icon("play", 12) : icon("pause", 12)}
+                  ${account.is_paused ? "Resume" : "Pause"}
+                </button>
+                <button hx-get="/api/account/${account.id}/edit" hx-target="#account-${account.id}" hx-swap="outerHTML"
+                        class="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-accent transition-colors text-foreground">
+                  ${icon("edit", 12)}
+                  Edit
+                </button>
+                <div class="border-t my-1"></div>
+                <button onclick="openDeleteModal('${escapeHtml(account.github_username)}', ${account.id})"
+                        class="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-red-400/10 transition-colors text-red-400">
+                  ${icon("trash", 12)}
+                  Remove
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -612,16 +634,16 @@ function claudeCodeAccountCard(account, usage, details = [], error = null) {
          data-loginmethod="${resolveLoginMethod(account)}">
       <div class="p-4 pb-0">
         <div class="flex items-start justify-between gap-2">
-          <div class="flex items-center gap-2.5 min-w-0">
+          <div class="flex items-center gap-2.5 min-w-0 flex-1">
             <div class="w-9 h-9 rounded-full border flex-shrink-0 bg-[#D97757]/10 flex items-center justify-center text-[#D97757]">
               ${icon("claude", 20)}
             </div>
-            <div class="min-w-0">
+            <div class="min-w-0 flex-1">
               <div class="flex items-center gap-1.5 flex-wrap">
                 <h3 class="text-sm font-semibold text-foreground truncate censor-target">${escapeHtml(account.display_name || account.github_username)}</h3>
                 ${planBadge(account.claude_plan || "api", "claude_code")}
               </div>
-              <p class="text-xs text-muted-foreground censor-target">${escapeHtml(account.claude_user_email || account.github_username)}</p>
+              <p class="text-xs text-muted-foreground censor-target truncate">${escapeHtml(account.claude_user_email || account.github_username)}</p>
             </div>
           </div>
           <div class="flex items-center flex-shrink-0 -mr-1 gap-0.5">
@@ -629,24 +651,35 @@ function claudeCodeAccountCard(account, usage, details = [], error = null) {
                     class="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-accent transition-colors ${isFav ? "text-amber-400" : "text-muted-foreground hover:text-amber-400"}" data-tooltip="${isFav ? "Unpin" : "Pin to top"}" aria-label="${isFav ? "Unpin" : "Pin to top"}">
               ${isFav ? icon("star-filled", 14) : icon("star", 14)}
             </button>
-            <button hx-post="/api/account/${account.id}/pause" hx-target="#account-${account.id}" hx-swap="outerHTML"
-                    class="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-accent transition-colors ${account.is_paused ? "text-emerald-500" : "text-muted-foreground hover:text-foreground"}"
-                    data-tooltip="${account.is_paused ? "Resume auto-refresh" : "Pause auto-refresh"}" aria-label="${account.is_paused ? "Resume auto-refresh" : "Pause auto-refresh"}">
-              ${account.is_paused ? icon("play", 14) : icon("pause", 14)}
-            </button>
             <button hx-post="/api/refresh/${account.id}" hx-target="#account-${account.id}" hx-swap="outerHTML"
                     class="refresh-btn inline-flex items-center justify-center w-7 h-7 rounded hover:bg-accent transition-colors text-muted-foreground hover:text-foreground" data-tooltip="Refresh" aria-label="Refresh">
               <span class="spin-icon">${icon("spinner", 14, "animate-spin")}</span>
               <span class="normal-icon">${icon("refresh", 14)}</span>
             </button>
-            <button hx-get="/api/account/${account.id}/edit" hx-target="#account-${account.id}" hx-swap="outerHTML"
-                    class="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-accent transition-colors text-muted-foreground hover:text-foreground" data-tooltip="Edit" aria-label="Edit">
-              ${icon("edit", 14)}
-            </button>
-            <button onclick="openDeleteModal('${escapeHtml(account.github_username)}', ${account.id})"
-                    class="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-red-400/10 transition-colors text-muted-foreground hover:text-red-400" data-tooltip="Remove" aria-label="Remove">
-              ${icon("trash", 14)}
-            </button>
+            <div class="relative account-menu">
+              <button onclick="toggleAccountMenu(${account.id})"
+                      class="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-accent transition-colors text-muted-foreground hover:text-foreground" data-tooltip="More actions" aria-label="More actions">
+                ${icon("more-vertical", 14)}
+              </button>
+              <div id="menu-${account.id}" class="account-menu-dropdown hidden absolute right-0 mt-1 w-40 bg-popover border rounded-md shadow-lg z-50">
+                <button hx-post="/api/account/${account.id}/pause" hx-target="#account-${account.id}" hx-swap="outerHTML"
+                        class="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-accent transition-colors ${account.is_paused ? "text-emerald-500" : "text-foreground"}">
+                  ${account.is_paused ? icon("play", 12) : icon("pause", 12)}
+                  ${account.is_paused ? "Resume" : "Pause"}
+                </button>
+                <button hx-get="/api/account/${account.id}/edit" hx-target="#account-${account.id}" hx-swap="outerHTML"
+                        class="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-accent transition-colors text-foreground">
+                  ${icon("edit", 12)}
+                  Edit
+                </button>
+                <div class="border-t my-1"></div>
+                <button onclick="openDeleteModal('${escapeHtml(account.github_username)}', ${account.id})"
+                        class="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-red-400/10 transition-colors text-red-400">
+                  ${icon("trash", 12)}
+                  Remove
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
