@@ -1,9 +1,5 @@
 import { icon } from "./icons.js";
-
-/** Escape HTML entities in title strings */
-function escapeTitle(str) {
-  return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
+import { escapeHtml } from "../utils.js";
 
 export function layout(title, body, extraHead = "") {
   return `<!DOCTYPE html>
@@ -11,7 +7,7 @@ export function layout(title, body, extraHead = "") {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${escapeTitle(title)} - KUOTA</title>
+  <title>${escapeHtml(title)} - KUOTA</title>
 
   <!-- PWA Meta Tags -->
   <meta name="description" content="Monitor GitHub Copilot and Claude Code usage across multiple accounts">

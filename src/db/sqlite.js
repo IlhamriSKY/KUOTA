@@ -4,9 +4,11 @@ import { eq, desc, asc, sql, getTableColumns } from "drizzle-orm";
 import { join } from "path";
 import { mkdirSync, existsSync, readFileSync } from "fs";
 import { accounts, usageHistory, usageDetail, appSettings } from "./schema.js";
+import { getAppRoot } from "../utils.js";
 
 // Database setup ---
-const DATA_DIR = join(import.meta.dir, "../../data");
+const APP_ROOT = getAppRoot();
+const DATA_DIR = join(APP_ROOT, "data");
 if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
 
 const sqlite = new Database(join(DATA_DIR, "quota.db"), { create: true });
@@ -19,7 +21,7 @@ const db = drizzle(sqlite);
 // Drizzle's built-in migrate() generates CREATE TABLE without IF NOT EXISTS,
 // which fails on existing databases. This custom runner patches the SQL at runtime.
 function runMigrations() {
-  const migrationsFolder = join(import.meta.dir, "../../drizzle");
+  const migrationsFolder = join(APP_ROOT, "drizzle");
   const journalPath = join(migrationsFolder, "meta/_journal.json");
   const journal = JSON.parse(readFileSync(journalPath, "utf-8"));
 

@@ -1,3 +1,20 @@
+import { dirname, join } from "path";
+
+/**
+ * Get the application root directory.
+ * In dev mode: resolves via import.meta.dir relative path.
+ * In compiled exe: resolves via the exe's actual directory.
+ */
+export function getAppRoot() {
+  // Detect compiled Bun binary (import.meta.dir points to virtual FS)
+  const exePath = process.execPath || process.argv[0];
+  if (exePath && exePath.endsWith(".exe") && !exePath.includes("bun")) {
+    return dirname(exePath);
+  }
+  // Dev mode: resolve from this file's location (src/utils.js -> project root)
+  return join(import.meta.dir, "..");
+}
+
 /**
  * Escape special HTML characters to prevent XSS.
  * @param {string} str - Untrusted string
@@ -152,49 +169,24 @@ export function sanitizeError(message) {
 }
 
 /**
- * Create safe error response for user display.
- * @param {Error|string} error - Error object or message
- * @param {string} fallback - Fallback message if error cannot be parsed
- * @returns {string} Safe error message
+ * Fetch with timeout support. Shared by all API service modules.
+ * @param {string} url - URL to fetch
+ * @param {object} options - Fetch options
+ * @param {number} timeoutMs - Timeout in milliseconds (default 10s)
+ * @returns {Promise<Response>}
  */
-export function getSafeErrorMessage(error, fallback = "An error occurred") {
-  if (!error) return fallback;
-
-  const message = typeof error === "string" ? error : error.message || fallback;
-  return sanitizeError(message);
-}
-
-/**
- * Toggle account dropdown menu visibility.
- * @param {number} accountId - Account ID
- */
-export function toggleAccountMenu(accountId) {
-  const menu = document.getElementById(`menu-${accountId}`);
-  if (!menu) return;
-
-  const isHidden = menu.classList.contains("hidden");
-
-  // Close all other menus first
-  document.querySelectorAll(".account-menu-dropdown").forEach(m => {
-    if (m !== menu) m.classList.add("hidden");
-  });
-
-  // Toggle current menu
-  if (isHidden) {
-    menu.classList.remove("hidden");
-  } else {
-    menu.classList.add("hidden");
-  }
-}
-
-// Close dropdown when clicking outside
-if (typeof document !== "undefined") {
-  document.addEventListener("click", (e) => {
-    // If click is not on a menu button or inside a menu
-    if (!e.target.closest(".account-menu")) {
-      document.querySelectorAll(".account-menu-dropdown").forEach(menu => {
-        menu.classList.add("hidden");
-      });
+export async function fetchWithTimeout(url, options = {}, timeoutMs = 10000) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    clearTimeout(timeout);
+    return response;
+  } catch (err) {
+    clearTimeout(timeout);
+    if (err.name === "AbortError") {
+      throw new Error(`Request timeout after ${timeoutMs}ms`);
     }
-  });
+    throw err;
+  }
 }

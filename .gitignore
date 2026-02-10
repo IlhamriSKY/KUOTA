@@ -8,6 +8,7 @@ node_modules/
 # ============================================
 out/
 dist/
+*.exe
 *.tgz
 public/css/styles.css
 public/js/htmx.min.js

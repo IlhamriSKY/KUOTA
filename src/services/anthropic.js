@@ -2,40 +2,15 @@
 // Requires Admin API Key from Anthropic Console
 // Documentation: https://platform.claude.com/docs/en/build-with-claude/claude-code-analytics-api
 
+import { fetchWithTimeout } from "../utils.js";
+
 const API = "https://api.anthropic.com";
 const HEADERS_BASE = {
   "anthropic-version": "2023-06-01",
 };
 
-// Default timeout for API requests (10 seconds)
-const DEFAULT_TIMEOUT = 10000;
-
 function headers(adminKey) {
   return { ...HEADERS_BASE, "x-api-key": adminKey };
-}
-
-/**
- * Fetch with timeout support
- * @param {string} url - URL to fetch
- * @param {object} options - Fetch options
- * @param {number} timeoutMs - Timeout in milliseconds
- * @returns {Promise<Response>}
- */
-async function fetchWithTimeout(url, options = {}, timeoutMs = DEFAULT_TIMEOUT) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const response = await fetch(url, { ...options, signal: controller.signal });
-    clearTimeout(timeout);
-    return response;
-  } catch (err) {
-    clearTimeout(timeout);
-    if (err.name === 'AbortError') {
-      throw new Error(`Request timeout after ${timeoutMs}ms`);
-    }
-    throw err;
-  }
 }
 
 // Fetch Claude Code analytics for a single day with automatic pagination

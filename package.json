@@ -14,6 +14,8 @@
     "build:css:watch": "bunx tailwindcss -i src/styles/globals.css -o public/css/styles.css --watch",
     "build:assets": "bun run scripts/copy-assets.js",
     "build:icons": "bun run scripts/generate-icons.js",
+    "build:exe": "bun run scripts/build-exe.js",
+    "desktop": "bun run build:dev && bun run src/desktop.js",
     "db:generate": "bunx drizzle-kit generate",
     "db:push": "bunx drizzle-kit push",
     "db:studio": "bunx drizzle-kit studio",
@@ -22,6 +24,7 @@
   "devDependencies": {
     "@types/bun": "latest",
     "drizzle-kit": "^0.31.9",
+    "rcedit": "^5.0.2",
     "sharp": "^0.34.5"
   },
   "dependencies": {
@@ -30,6 +33,7 @@
     "htmx.org": "^2.0.8",
     "lucide-static": "^0.563.0",
     "mysql2": "^3.16.3",
-    "tailwindcss": "3"
+    "tailwindcss": "3",
+    "webview-bun": "^2.4.0"
   }
 }

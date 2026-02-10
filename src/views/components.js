@@ -328,7 +328,7 @@ function copilotAccountCard(account, usage, details = [], error = null) {
                 ${planBadge(account.copilot_plan)}
               </div>
               <p class="text-xs text-muted-foreground censor-target truncate">@${escapeHtml(account.github_username)}</p>
-              ${account.github_email ? `<p class="text-[11px] text-muted-foreground censor-target truncate mt-0.5 flex items-center gap-1"><span class="flex-shrink-0">${icon("mail", 10, "inline")}</span><span class="truncate">${escapeHtml(account.github_email)}</span></p>` : ""}
+              ${account.github_email ? `<p class="text-[11px] text-muted-foreground censor-target truncate mt-0.5 flex items-center gap-1"><span class="truncate">${escapeHtml(account.github_email)}</span></p>` : ""}
             </div>
           </a>
           <div class="flex items-center flex-shrink-0 -mr-1 gap-0.5">

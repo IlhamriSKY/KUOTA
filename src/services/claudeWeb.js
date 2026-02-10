@@ -6,33 +6,13 @@
 import { homedir } from "os";
 import { join } from "path";
 import { existsSync, readFileSync } from "fs";
+import { fetchWithTimeout } from "../utils.js";
 
 const USAGE_URL = "https://api.anthropic.com/api/oauth/usage";
 const REFRESH_URL = "https://platform.claude.com/v1/oauth/token";
 const CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
 const SCOPES = "user:profile user:inference user:sessions:claude_code user:mcp_servers";
 const REFRESH_BUFFER_MS = 5 * 60 * 1000; // 5 minutes before expiration
-const DEFAULT_TIMEOUT = 10000; // 10 seconds
-
-/**
- * Fetch with timeout support
- */
-async function fetchWithTimeout(url, options = {}, timeoutMs = DEFAULT_TIMEOUT) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const response = await fetch(url, { ...options, signal: controller.signal });
-    clearTimeout(timeout);
-    return response;
-  } catch (err) {
-    clearTimeout(timeout);
-    if (err.name === 'AbortError') {
-      throw new Error(`Request timeout after ${timeoutMs}ms`);
-    }
-    throw err;
-  }
-}
 
 /**
  * Try to read Claude Code credentials from ~/.claude/.credentials.json

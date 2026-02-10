@@ -3,6 +3,7 @@
 // Set GITHUB_OAUTH_CLIENT_ID in .env
 
 import { getSetting } from "../db/sqlite.js";
+import { fetchWithTimeout } from "../utils.js";
 
 const DEVICE_CODE_URL = "https://github.com/login/device/code";
 const ACCESS_TOKEN_URL = "https://github.com/login/oauth/access_token";
@@ -13,7 +14,7 @@ export function getClientId() {
 
 // Step 1: Request device & user codes
 export async function requestDeviceCode(clientId) {
-  const res = await fetch(DEVICE_CODE_URL, {
+  const res = await fetchWithTimeout(DEVICE_CODE_URL, {
     method: "POST",
     headers: {
       Accept: "application/json",
@@ -36,7 +37,7 @@ export async function requestDeviceCode(clientId) {
 
 // Step 2: Poll for access token
 export async function pollForToken(clientId, deviceCode) {
-  const res = await fetch(ACCESS_TOKEN_URL, {
+  const res = await fetchWithTimeout(ACCESS_TOKEN_URL, {
     method: "POST",
     headers: {
       Accept: "application/json",

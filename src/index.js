@@ -4,8 +4,11 @@ import { serveStatic } from "hono/bun";
 import pages from "./routes/pages.js";
 import api, { refreshAccount } from "./routes/api.js";
 import { getAllAccounts, getSetting } from "./db/sqlite.js";
-import { escapeHtml, validatePort, sanitizeError } from "./utils.js";
+import { escapeHtml, validatePort, sanitizeError, getAppRoot } from "./utils.js";
 import { encrypt, decrypt } from "./services/crypto.js";
+
+// Set CWD to app root (important for static file serving in compiled exe)
+try { process.chdir(getAppRoot()); } catch {}
 
 // Startup validation
 async function validateStartup() {
@@ -71,22 +74,15 @@ app.use("*", async (c, next) => {
 });
 
 // Cache headers middleware (must be before serveStatic)
-app.use("/css/*", async (c, next) => {
-  await next();
-  c.header("Cache-Control", "public, max-age=86400");
-});
-app.use("/js/*", async (c, next) => {
-  await next();
-  c.header("Cache-Control", "public, max-age=86400");
-});
-app.use("/fonts/*", async (c, next) => {
-  await next();
-  c.header("Cache-Control", "public, max-age=604800");
-});
-app.use("/icons/*", async (c, next) => {
-  await next();
-  c.header("Cache-Control", "public, max-age=604800");
-});
+const CACHE_LONG = "public, max-age=604800";  // 1 week
+const CACHE_SHORT = "public, max-age=86400";  // 1 day
+
+for (const path of ["/css/*", "/js/*"]) {
+  app.use(path, async (c, next) => { await next(); c.header("Cache-Control", CACHE_SHORT); });
+}
+for (const path of ["/fonts/*", "/icons/*", "/favicon.ico"]) {
+  app.use(path, async (c, next) => { await next(); c.header("Cache-Control", CACHE_LONG); });
+}
 app.use("/manifest.json", async (c, next) => {
   await next();
   c.header("Cache-Control", "public, max-age=86400");
@@ -103,13 +99,9 @@ app.use("/favicon.ico", async (c, next) => {
 });
 
 // Static files
-app.use("/css/*", serveStatic({ root: "./public" }));
-app.use("/js/*", serveStatic({ root: "./public" }));
-app.use("/fonts/*", serveStatic({ root: "./public" }));
-app.use("/icons/*", serveStatic({ root: "./public" }));
-app.use("/manifest.json", serveStatic({ root: "./public" }));
-app.use("/sw.js", serveStatic({ root: "./public" }));
-app.use("/favicon.ico", serveStatic({ root: "./public" }));
+for (const path of ["/css/*", "/js/*", "/fonts/*", "/icons/*", "/manifest.json", "/sw.js", "/favicon.ico"]) {
+  app.use(path, serveStatic({ root: "./public" }));
+}
 
 // Health check endpoints
 app.get("/health", (c) => {
@@ -263,19 +255,22 @@ process.on("unhandledRejection", (reason, promise) => {
 
 const PORT = validatePort(process.env.PORT || "3000") || 3000;
 
+const serverUrl = `http://localhost:${PORT}`;
+
+// Explicitly start server (works both as main entry and when imported by subprocess)
+Bun.serve({
+  port: PORT,
+  fetch: app.fetch,
+});
+
 console.log(`
 ╔══════════════════════════════════════════════╗
 ║                   KUOTA                      ║
 ║   Copilot & Claude Code Quota Monitor        ║
 ║                                              ║
-║   http://localhost:${PORT}                      ║
+║   ${serverUrl.padEnd(39)}║
 ║                                              ║
 ║   Auto-refresh: every ${String(getAutoRefreshMinutes()).padEnd(2)} min               ║
 ║   Press Ctrl+C to stop                       ║
 ╚══════════════════════════════════════════════╝
 `);
-
-export default {
-  port: PORT,
-  fetch: app.fetch,
-};

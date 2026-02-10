@@ -52,6 +52,7 @@ Open [http://localhost:3000](http://localhost:3000) and add your accounts.
 | `bun run build:dev`   | Build for development (CSS + vendor only) |
 | `bun run build:css`   | Build Tailwind CSS (minified)            |
 | `bun run build:icons` | Generate PWA icons from SVG              |
+| `bun run build:exe`   | Compile standalone `.exe` (output in `dist/`) |
 | `bun run build:css:watch` | Watch mode for Tailwind CSS          |
 | `bun run db:generate` | Generate Drizzle migration from schema   |
 | `bun run db:push`     | Push schema directly to DB (dev)         |

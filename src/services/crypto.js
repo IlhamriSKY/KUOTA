@@ -1,8 +1,9 @@
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "crypto";
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
+import { getAppRoot } from "../utils.js";
 
-const SECRET_FILE = join(import.meta.dir, "../../.secret");
+const SECRET_FILE = join(getAppRoot(), ".secret");
 
 function getSecret() {
   if (process.env.APP_SECRET) return process.env.APP_SECRET;

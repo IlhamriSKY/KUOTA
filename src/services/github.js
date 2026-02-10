@@ -1,38 +1,13 @@
+import { fetchWithTimeout } from "../utils.js";
+
 const API = "https://api.github.com";
 const HEADERS_BASE = {
   Accept: "application/vnd.github+json",
   "X-GitHub-Api-Version": "2022-11-28",
 };
 
-// Default timeout for API requests (10 seconds)
-const DEFAULT_TIMEOUT = 10000;
-
 function headers(token) {
   return { ...HEADERS_BASE, Authorization: `Bearer ${token}` };
-}
-
-/**
- * Fetch with timeout support
- * @param {string} url - URL to fetch
- * @param {object} options - Fetch options
- * @param {number} timeoutMs - Timeout in milliseconds
- * @returns {Promise<Response>}
- */
-async function fetchWithTimeout(url, options = {}, timeoutMs = DEFAULT_TIMEOUT) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const response = await fetch(url, { ...options, signal: controller.signal });
-    clearTimeout(timeout);
-    return response;
-  } catch (err) {
-    clearTimeout(timeout);
-    if (err.name === 'AbortError') {
-      throw new Error(`Request timeout after ${timeoutMs}ms`);
-    }
-    throw err;
-  }
 }
 
 // Fetch authenticated user profile from GitHub
@@ -204,7 +179,7 @@ export async function detectCopilotPlan(token, username, orgs = []) {
       }
 
       // API returned 200 but no copilot items, check general billing
-      const genRes = await fetch(
+      const genRes = await fetchWithTimeout(
         `${API}/users/${username}/settings/billing/usage?year=${year}&month=${month}`,
         { headers: headers(token) }
       );
