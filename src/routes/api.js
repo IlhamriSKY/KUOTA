@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { encrypt, decrypt } from "../services/crypto.js";
-import { getUser, getPremiumRequestUsage, getBillingUsage, parseUsageData, verifyPat, getUserOrgs } from "../services/github.js";
+import { getUser, getPremiumRequestUsage, getBillingUsage, parseUsageData, verifyPat, getUserOrgs, getOrgPremiumRequestUsage, getOrgBillingUsage, detectCopilotPlan } from "../services/github.js";
 import { getClaudeCodeMonthUsage, parseClaudeCodeData, verifyAdminKey } from "../services/anthropic.js";
 import { verifyAccessToken, getClaudeWebUsage, getValidToken, readLocalCredentials, refreshAccessToken } from "../services/claudeWeb.js";
 import { formatDateNow } from "../views/layout.js";
@@ -70,13 +70,90 @@ function renderCard(id, error = null) {
 
 // ===================== Account Management =====================
 
+// Detect orgs and plan for a given PAT (used by the add form dynamically)
+api.post("/account/detect-orgs", async (c) => {
+  try {
+    const body = await c.req.parseBody();
+    const pat = body.pat?.trim();
+    if (!pat) return c.html(alertBox("error", "Token is required"));
+
+    let user;
+    try {
+      user = await getUser(pat);
+    } catch {
+      return c.html(alertBox("error", "Invalid token."));
+    }
+
+    const orgs = await getUserOrgs(pat);
+
+    // Auto-detect Copilot plan
+    const detected = await detectCopilotPlan(pat, user.login, orgs);
+
+    const planLabels = { free: "Free", pro: "Pro", pro_plus: "Pro+", business: "Business", enterprise: "Enterprise" };
+    const planLimits = { free: 50, pro: 300, pro_plus: 1500, business: 300, enterprise: 1000 };
+
+    // Build org selector HTML
+    const orgOptions = [`<option value=""${detected.source !== "org" ? " selected" : ""}>Personal (${escapeHtml(user.login)})</option>`];
+    for (const org of orgs) {
+      const isDetected = detected.source === "org" && detected.org === org;
+      orgOptions.push(`<option value="${escapeHtml(org)}"${isDetected ? " selected" : ""}>${escapeHtml(org)}${isDetected ? " (detected)" : ""}</option>`);
+    }
+
+    // Build plan selector HTML
+    const plans = ["free", "pro", "pro_plus", "business", "enterprise"];
+    const planOptions = plans.map(p => {
+      const isDetected = detected.plan === p;
+      return `<option value="${p}"${isDetected ? " selected" : ""}>${planLabels[p]} (${planLimits[p]} req/month)${isDetected ? " ✓ detected" : ""}</option>`;
+    }).join("");
+
+    // Plan detection status message
+    let planStatus = "";
+    if (detected.plan) {
+      if (detected.source === "org") {
+        planStatus = `<div class="flex items-center gap-1.5 text-xs text-emerald-500 mt-1">${icon("check-circle", 12)} Copilot <strong>${planLabels[detected.plan]}</strong> detected via org <strong class="censor-target">${escapeHtml(detected.org)}</strong></div>`;
+      } else {
+        planStatus = `<div class="flex items-center gap-1.5 text-xs text-emerald-500 mt-1">${icon("check-circle", 12)} Copilot <strong>${planLabels[detected.plan]}</strong> detected</div>`;
+      }
+    } else {
+      planStatus = `<div class="flex items-center gap-1.5 text-xs text-amber-500 mt-1">${icon("alert-triangle", 12)} Could not detect Copilot plan. Select manually.</div>`;
+    }
+
+    return c.html(`
+      <div class="fade-in space-y-2">
+        <div class="flex items-center gap-2 text-xs text-emerald-500">
+          ${icon("check-circle", 14)}
+          <span>Token valid for <strong class="censor-target">@${escapeHtml(user.login)}</strong></span>
+        </div>
+        <div>
+          <label class="block text-xs font-medium mb-1">Billing Source</label>
+          <select name="billing_org" class="input-field w-full px-2.5 py-1.5 bg-background border rounded text-foreground text-xs">
+            ${orgOptions.join("")}
+          </select>
+          <p class="text-[11px] text-muted-foreground mt-1">${orgs.length > 0 ? `Found ${orgs.length} org(s). Select the org that manages your Copilot seat, or "Personal" if self-managed.` : "No organizations found. Usage will be fetched from personal billing."}</p>
+        </div>
+        <div>
+          <label class="block text-xs font-medium mb-1">Detected Plan</label>
+          <select name="detected_plan" class="input-field w-full px-2.5 py-1.5 bg-background border rounded text-foreground text-xs" onchange="this.closest('form').querySelector('select[name=plan]').value = this.value">
+            ${planOptions}
+          </select>
+          ${planStatus}
+        </div>
+      </div>
+    `);
+  } catch (err) {
+    return c.html(alertBox("error", `Error: ${escapeHtml(err.message)}`));
+  }
+});
+
 // Add account via PAT
 api.post("/account/add-pat", async (c) => {
   try {
     const body = await c.req.parseBody();
     const pat = body.pat?.trim();
-    const plan = validatePlan(body.plan) || "pro";
+    // Prefer detected_plan from auto-detect, fallback to manual plan selection
+    let plan = validatePlan(body.detected_plan) || validatePlan(body.plan) || "pro";
     const note = (body.note || "").trim().slice(0, 200);
+    let billingOrg = (body.billing_org || "").trim();
 
     if (!pat) return c.html(alertBox("error", "Token is required"));
 
@@ -88,37 +165,35 @@ api.post("/account/add-pat", async (c) => {
       return c.html(alertBox("error", "Invalid token. Make sure it's a valid Fine-grained PAT."));
     }
 
-    // Verify billing access
-    const verification = await verifyPat(pat, user.login);
-    if (!verification.valid) {
-      return c.html(alertBox("error", `Token works but cannot access billing data. Make sure the PAT has <strong>Plan: Read</strong> permission.<br><small>${verification.error}</small>`));
+    // Fetch orgs
+    const orgs = await getUserOrgs(pat);
+
+    // Auto-detect Copilot plan
+    const detected = await detectCopilotPlan(pat, user.login, orgs);
+    if (detected.plan) {
+      // Use detected plan, override user selection
+      plan = detected.plan;
+      // Set billing org if detected from org
+      if (detected.source === "org" && detected.org && !billingOrg) {
+        billingOrg = detected.org;
+      }
+    } else if (!billingOrg && (plan === "business" || plan === "enterprise") && orgs.length > 0) {
+      // Fallback: auto-detect billing org for business/enterprise plans
+      const verification = await verifyPat(pat, user.login);
+      if (verification.valid && verification.source === "org" && verification.org) {
+        billingOrg = verification.org;
+      } else if (orgs.length === 1) {
+        billingOrg = orgs[0];
+      }
     }
 
-    // Check if account exists
+    const planLabels = { free: "Free", pro: "Pro", pro_plus: "Pro+", business: "Business", enterprise: "Enterprise" };
+
+    // Check if account already exists
     const existing = getAccountByUsername(user.login);
     if (existing) {
-      // Fetch orgs
-      const orgs = await getUserOrgs(pat);
-
-      // Update PAT and plan
-      updateAccount(existing.id, {
-        pat_token: encrypt(pat),
-        copilot_plan: plan,
-        avatar_url: user.avatar_url,
-        display_name: user.name || user.login,
-        github_orgs: orgs.join(","),
-        login_method: "pat",
-        note,
-      });
-
-      // Fetch fresh usage
-      await fetchAndStoreUsage(existing.id, user.login, pat, plan);
-
-      return c.html(alertBox("success", `Updated PAT for <strong>@${escapeHtml(user.login)}</strong>. <a href="/" class="underline">Go to Dashboard</a>`));
+      return c.html(alertBox("error", `Account <strong>@${escapeHtml(user.login)}</strong> already exists. Edit it from the dashboard instead.`));
     }
-
-    // Fetch orgs for new account
-    const orgs = await getUserOrgs(pat);
 
     // Create new account
     createAccount({
@@ -132,15 +207,21 @@ api.post("/account/add-pat", async (c) => {
 
     const newAcc = getAccountByUsername(user.login);
     if (newAcc) {
-      if (orgs.length > 0) {
-        updateAccount(newAcc.id, { github_orgs: orgs.join(","), login_method: "pat", note });
-      } else {
-        updateAccount(newAcc.id, { login_method: "pat", note });
-      }
-      await fetchAndStoreUsage(newAcc.id, user.login, pat, plan);
+      updateAccount(newAcc.id, {
+        github_orgs: orgs.join(","),
+        billing_org: billingOrg,
+        login_method: "pat",
+        note,
+      });
+      await fetchAndStoreUsage(newAcc.id, user.login, pat, plan, billingOrg);
     }
 
-    return c.html(alertBox("success", `Added <strong>@${escapeHtml(user.login)}</strong> successfully! <a href="/" class="underline">Go to Dashboard</a>`));
+    const detectedInfo = [];
+    if (detected.plan) detectedInfo.push(`Plan: <strong>${planLabels[detected.plan]}</strong>`);
+    if (billingOrg) detectedInfo.push(`Org: <strong class="censor-target">${escapeHtml(billingOrg)}</strong>`);
+    const infoStr = detectedInfo.length > 0 ? ` (${detectedInfo.join(", ")})` : "";
+
+    return c.html(alertBox("success", `Added <strong class="censor-target">@${escapeHtml(user.login)}</strong>${infoStr} successfully! <a href="/" class="underline">Go to Dashboard</a>`));
   } catch (err) {
     return c.html(alertBox("error", `Error: ${escapeHtml(err.message)}`));
   }
@@ -171,20 +252,7 @@ api.post("/account/add-claude", async (c) => {
     // Check if name already exists
     const existing = getAccountByUsername(name);
     if (existing) {
-      // Update existing
-      updateAccount(existing.id, {
-        pat_token: encrypt(apiKey),
-        claude_plan: plan,
-        monthly_budget: budget,
-        claude_user_email: userEmail,
-        account_type: "claude_code",
-        login_method: "claude_api",
-        note: noteClaudeCode,
-      });
-
-      await fetchAndStoreClaudeUsage(existing.id, apiKey, userEmail, budget);
-
-      return c.html(alertBox("success", `Updated <strong>${escapeHtml(name)}</strong>. <a href="/" class="underline">Go to Dashboard</a>`));
+      return c.html(alertBox("error", `Account <strong>${escapeHtml(name)}</strong> already exists. Edit it from the dashboard instead.`));
     }
 
     // Create new
@@ -266,19 +334,7 @@ api.post("/account/add-claude-web", async (c) => {
     // Check if name already exists
     const existing = getAccountByUsername(name);
     if (existing) {
-      updateAccount(existing.id, {
-        pat_token: encrypt(accessToken),
-        claude_plan: plan,
-        account_type: "claude_web",
-        claude_cf_clearance: refreshToken ? encrypt(refreshToken) : "",
-        claude_token_expires_at: expiresAt,
-        login_method: "claude_cli",
-        note: noteClaudeWeb,
-      });
-
-      await fetchAndStoreClaudeWebUsage(existing.id, accessToken);
-
-      return c.html(alertBox("success", `Updated <strong>${escapeHtml(name)}</strong>. <a href="/" class="underline">Go to Dashboard</a>`));
+      return c.html(alertBox("error", `Account <strong>${escapeHtml(name)}</strong> already exists. Edit it from the dashboard instead.`));
     }
 
     // Create new
@@ -440,9 +496,10 @@ api.put("/account/:id", async (c) => {
 
   // Copilot account edit
   const newPat = body.pat?.trim();
-  const newPlan = validatePlan(body.plan) || acc.copilot_plan;
+  let newPlan = validatePlan(body.plan) || acc.copilot_plan;
+  const newBillingOrg = body.billing_org !== undefined ? (body.billing_org || "").trim() : acc.billing_org;
 
-  const updates = { copilot_plan: newPlan, note: editNote };
+  const updates = { copilot_plan: newPlan, note: editNote, billing_org: newBillingOrg };
 
   if (newPat) {
     // Verify new token
@@ -453,11 +510,6 @@ api.put("/account/:id", async (c) => {
       return c.html(alertBox("error", "Invalid token. Please check and try again."));
     }
 
-    const verification = await verifyPat(newPat, user.login);
-    if (!verification.valid) {
-      return c.html(alertBox("error", "Token valid but no billing access. Ensure PAT has Plan: Read permission."));
-    }
-
     updates.pat_token = encrypt(newPat);
     updates.avatar_url = user.avatar_url;
     updates.display_name = user.name || user.login;
@@ -465,6 +517,16 @@ api.put("/account/:id", async (c) => {
     // Refresh orgs with new token
     const orgs = await getUserOrgs(newPat);
     updates.github_orgs = orgs.join(",");
+
+    // Re-detect plan with new token
+    const detected = await detectCopilotPlan(newPat, user.login, orgs);
+    if (detected.plan) {
+      newPlan = detected.plan;
+      updates.copilot_plan = newPlan;
+      if (detected.source === "org" && detected.org && !newBillingOrg) {
+        updates.billing_org = detected.org;
+      }
+    }
   }
 
   updateAccount(id, updates);
@@ -474,7 +536,7 @@ api.put("/account/:id", async (c) => {
   const pat = decrypt(updatedAcc.pat_token);
   if (pat) {
     try {
-      await fetchAndStoreUsage(id, updatedAcc.github_username, pat, newPlan);
+      await fetchAndStoreUsage(id, updatedAcc.github_username, pat, newPlan, newBillingOrg);
     } catch (err) {
       console.error(`Refresh after edit failed: ${err.message}`);
     }
@@ -519,20 +581,11 @@ api.post("/refresh/:id", async (c) => {
   }
 });
 
-// Refresh all accounts
+// Refresh all accounts (returns list of IDs so client can refresh each individually)
 api.post("/refresh-all", async (c) => {
   const accounts = getAllAccounts();
-  for (const acc of accounts) {
-    if (acc.is_paused) continue;
-    try {
-      await refreshAccount(acc);
-    } catch (err) {
-      console.error(`Refresh failed for ${acc.github_username}:`, err.message);
-    }
-  }
-  // Redirect to dashboard to show fresh data
-  c.header("HX-Redirect", "/");
-  return c.text("ok");
+  const activeIds = accounts.filter(a => !a.is_paused).map(a => a.id);
+  return c.json({ ids: activeIds });
 });
 
 // Copy token (returns decrypted token as JSON - POST for security)
@@ -614,17 +667,23 @@ api.get("/oauth/poll/:flowId", async (c) => {
     if (result.access_token) {
       // Success - get user info
       const user = await getUser(result.access_token);
+      const orgs = await getUserOrgs(result.access_token);
 
       // Try using OAuth token for billing data too
       let billingWorks = false;
+      let verification = { valid: false, source: "unknown" };
       try {
-        const verification = await verifyPat(result.access_token, user.login);
+        verification = await verifyPat(result.access_token, user.login);
         billingWorks = verification.valid;
       } catch {}
 
-      // Save or update account with OAuth token (and as PAT if billing works)
+      // Auto-detect plan and billing org
+      const detected = await detectCopilotPlan(result.access_token, user.login, orgs);
+      const detectedPlan = detected.plan || "pro";
+      const detectedBillingOrg = (detected.source === "org" && detected.org) ? detected.org
+        : (verification.source === "org" && verification.org) ? verification.org : "";
+
       const existing = getAccountByUsername(user.login);
-      const orgs = await getUserOrgs(result.access_token);
 
       if (existing) {
         const updates = {
@@ -633,15 +692,19 @@ api.get("/oauth/poll/:flowId", async (c) => {
           display_name: user.name || user.login,
           github_orgs: orgs.join(","),
           login_method: "oauth",
+          copilot_plan: detectedPlan,
         };
         if (billingWorks) {
           updates.pat_token = encrypt(result.access_token);
+        }
+        if (detectedBillingOrg && !existing.billing_org) {
+          updates.billing_org = detectedBillingOrg;
         }
         updateAccount(existing.id, updates);
 
         if (billingWorks) {
           try {
-            await fetchAndStoreUsage(existing.id, existing.github_username, result.access_token, existing.copilot_plan);
+            await fetchAndStoreUsage(existing.id, existing.github_username, result.access_token, detectedPlan, existing.billing_org || detectedBillingOrg);
           } catch {}
         }
       } else {
@@ -651,15 +714,19 @@ api.get("/oauth/poll/:flowId", async (c) => {
           display_name: user.name || user.login,
           oauth_token: encrypt(result.access_token),
           pat_token: billingWorks ? encrypt(result.access_token) : "",
-          copilot_plan: "pro",
+          copilot_plan: detectedPlan,
         });
 
         const newAcc = getAccountByUsername(user.login);
         if (newAcc) {
-          updateAccount(newAcc.id, { github_orgs: orgs.join(","), login_method: "oauth" });
+          updateAccount(newAcc.id, {
+            github_orgs: orgs.join(","),
+            login_method: "oauth",
+            billing_org: detectedBillingOrg,
+          });
           if (billingWorks) {
             try {
-              await fetchAndStoreUsage(newAcc.id, user.login, result.access_token, "pro");
+              await fetchAndStoreUsage(newAcc.id, user.login, result.access_token, detectedPlan, detectedBillingOrg);
             } catch {}
           }
         }
@@ -774,16 +841,14 @@ api.get("/time", (c) => {
 
 // ===================== Helpers =====================
 
-async function fetchAndStoreUsage(accountId, username, pat, plan) {
+async function fetchAndStoreUsage(accountId, username, pat, plan, billingOrg = null) {
   const now = new Date();
   const year = now.getFullYear();
   const month = now.getMonth() + 1;
   const planLimit = PLAN_LIMITS[plan] || 300;
 
-  try {
-    const data = await getPremiumRequestUsage(pat, username, year, month);
-    const parsed = parseUsageData(data, planLimit);
-
+  // Helper to save parsed usage data
+  function saveUsage(parsed) {
     upsertUsageHistory({
       account_id: accountId,
       year,
@@ -795,7 +860,6 @@ async function fetchAndStoreUsage(accountId, username, pat, plan) {
       percentage: parsed.percentage,
     });
 
-    // Get the history ID
     const usage = getLatestUsage(accountId);
     if (usage && parsed.models.length > 0) {
       clearUsageDetails(usage.id);
@@ -809,41 +873,142 @@ async function fetchAndStoreUsage(accountId, username, pat, plan) {
         });
       }
     }
-
     return parsed;
-  } catch (err) {
-    console.error(`Failed to fetch usage for ${username}:`, err.message);
-    
-    // Try fallback to general billing endpoint
+  }
+
+  // Helper to try org-level endpoints
+  async function tryOrgEndpoints(org) {
+    // Try org premium request endpoint (with user filter)
     try {
-      const data = await getBillingUsage(pat, username, year, month);
+      const data = await getOrgPremiumRequestUsage(pat, org, year, month, username);
+      const parsed = parseUsageData(data, planLimit);
+      if (parsed.grossQuantity > 0) {
+        console.log(`Got usage for ${username} from org ${org} premium request endpoint (user-filtered)`);
+        return saveUsage(parsed);
+      }
+    } catch (err) {
+      console.log(`Org ${org} premium request (user-filtered) failed: ${err.message}`);
+    }
+
+    // Try org premium request endpoint without user filter (enterprise orgs may block user filter)
+    try {
+      const data = await getOrgPremiumRequestUsage(pat, org, year, month);
+      const parsed = parseUsageData(data, planLimit);
+      if (parsed.grossQuantity > 0) {
+        console.log(`Got usage for ${username} from org ${org} premium request endpoint (unfiltered)`);
+        return saveUsage(parsed);
+      }
+    } catch (err) {
+      console.log(`Org ${org} premium request (unfiltered) failed: ${err.message}`);
+    }
+
+    // Try org general billing endpoint
+    try {
+      const data = await getOrgBillingUsage(pat, org, year, month);
       const items = (data.usageItems || []).filter(
         (i) => i.product && i.product.toLowerCase() === "copilot"
       );
-      
       let grossQuantity = 0;
       let netAmount = 0;
       for (const item of items) {
-        grossQuantity += item.quantity || 0;
+        grossQuantity += item.grossQuantity || item.quantity || 0;
         netAmount += item.netAmount || 0;
       }
-      
-      const percentage = planLimit > 0 ? (grossQuantity / planLimit) * 100 : 0;
-      
-      upsertUsageHistory({
-        account_id: accountId,
-        year,
-        month,
-        gross_quantity: grossQuantity,
-        included_quantity: 0,
-        net_amount: netAmount,
-        plan_limit: planLimit,
-        percentage: Math.round(percentage * 10) / 10,
-      });
-    } catch (fallbackErr) {
-      console.error(`Fallback also failed for ${username}:`, fallbackErr.message);
+      if (grossQuantity > 0) {
+        const percentage = planLimit > 0 ? (grossQuantity / planLimit) * 100 : 0;
+        console.log(`Got usage for ${username} from org ${org} general billing endpoint`);
+        return saveUsage({ grossQuantity, includedQuantity: 0, netAmount, percentage: Math.round(percentage * 10) / 10, models: [] });
+      }
+    } catch (err) {
+      console.log(`Org ${org} general billing failed: ${err.message}`);
+    }
+
+    return null;
+  }
+
+  // Resolve billingOrg from parameter or stored account data
+  const account = getAccountById(accountId);
+  if (!billingOrg) {
+    billingOrg = account?.billing_org || "";
+  }
+
+  // Collect orgs list for fallback scanning
+  let allOrgs = account?.github_orgs ? account.github_orgs.split(",").filter(Boolean) : [];
+
+  // If billing is from a specific org, try org endpoints FIRST
+  if (billingOrg) {
+    const result = await tryOrgEndpoints(billingOrg);
+    if (result) return result;
+    console.log(`Org ${billingOrg} endpoints returned no data, falling back to user-level...`);
+  }
+
+  // Try user-level premium request endpoint
+  try {
+    const data = await getPremiumRequestUsage(pat, username, year, month);
+    const parsed = parseUsageData(data, planLimit);
+    if (parsed.grossQuantity > 0) {
+      return saveUsage(parsed);
+    }
+  } catch (err) {
+    console.log(`User-level premium request failed for ${username}: ${err.message}`);
+  }
+
+  // Try user-level general billing endpoint
+  try {
+    const data = await getBillingUsage(pat, username, year, month);
+    const parsed = parseUsageData(data, planLimit);
+    if (parsed.grossQuantity > 0) {
+      return saveUsage(parsed);
+    }
+  } catch (err) {
+    console.log(`User-level billing also returned no data for ${username}: ${err.message}`);
+  }
+
+  // Only try org fallback scanning if a billing_org is set or plan is business/enterprise
+  // Personal accounts (free/pro without billing_org) don't need org scanning
+  const shouldScanOrgs = billingOrg || plan === "business" || plan === "enterprise";
+
+  if (shouldScanOrgs) {
+    if (allOrgs.length === 0) {
+      try {
+        const fetchedOrgs = await getUserOrgs(pat);
+        if (fetchedOrgs.length > 0) {
+          allOrgs = fetchedOrgs;
+          updateAccount(accountId, { github_orgs: fetchedOrgs.join(",") });
+        }
+      } catch {}
+    }
+
+    for (const org of allOrgs) {
+      if (org === billingOrg) continue; // Already tried above
+      const result = await tryOrgEndpoints(org);
+      if (result) {
+        // Auto-save detected billing org for future fetches
+        if (!billingOrg) {
+          updateAccount(accountId, { billing_org: org });
+          console.log(`Auto-detected billing org ${org} for ${username}`);
+        }
+        return result;
+      }
     }
   }
+
+  // No usage data found — this is normal for Free plan or start of month
+  if (plan === "free") {
+    // Free plan with 0 usage is expected, just save silently
+  } else {
+    console.warn(`No usage data found for ${username} (plan: ${plan}). Token may lack billing permissions.`);
+  }
+  upsertUsageHistory({
+    account_id: accountId,
+    year,
+    month,
+    gross_quantity: 0,
+    included_quantity: 0,
+    net_amount: 0,
+    plan_limit: planLimit,
+    percentage: 0,
+  });
 }
 
 // Export for use in scheduled refresh
@@ -968,7 +1133,21 @@ export async function refreshAccount(acc) {
     }
     await fetchAndStoreClaudeWebUsage(acc.id, tkn.accessToken);
   } else {
-    await fetchAndStoreUsage(acc.id, acc.github_username, key, acc.copilot_plan);
+    // For copilot accounts, just fetch usage with current plan settings
+    // Plan detection only happens on add/edit, not during auto-refresh
+    // to avoid inconsistent results from API permission variations
+    let billingOrg = acc.billing_org || "";
+
+    // Auto-detect billing org if missing and orgs exist
+    if (!billingOrg) {
+      const orgs = acc.github_orgs ? acc.github_orgs.split(",").filter(Boolean) : [];
+      if (orgs.length === 1) {
+        billingOrg = orgs[0];
+        updateAccount(acc.id, { billing_org: billingOrg });
+      }
+    }
+
+    await fetchAndStoreUsage(acc.id, acc.github_username, key, acc.copilot_plan, billingOrg);
   }
 }
 

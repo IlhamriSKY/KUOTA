@@ -74,6 +74,7 @@ const ICONS = {
   link: inner(Link),
   monitor: inner(Monitor),
   filter: inner(Search),
+  search: inner(Search),
   download: inner(Download),
   star: inner(Star),
   "star-filled": inner(Star).replace("/>", ' fill="currentColor"/>'),

@@ -80,6 +80,54 @@
   display: none;
 }
 
+/* Card refreshing animation */
+.card-refreshing {
+  pointer-events: none;
+  min-height: 80px;
+  position: relative;
+}
+.card-refreshing::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: hsl(var(--card) / 0.7);
+  border-radius: inherit;
+  z-index: 10;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+.card-refreshing > .refresh-overlay {
+  display: flex;
+}
+.refresh-overlay {
+  display: none;
+  position: absolute;
+  inset: 0;
+  z-index: 11;
+  align-items: center;
+  justify-content: center;
+}
+/* Card refreshed flash */
+.card-refreshed {
+  animation: refreshFlash 1.5s ease-out;
+}
+@keyframes refreshFlash {
+  0% { box-shadow: 0 0 0 2px hsl(var(--primary) / 0.5); }
+  100% { box-shadow: 0 0 0 0 hsl(var(--primary) / 0); }
+}
+
+.detect-orgs-btn .spin-icon {
+  display: none;
+}
+.detect-orgs-btn .normal-icon {
+  display: inline;
+}
+.detect-orgs-btn.htmx-request .spin-icon {
+  display: inline;
+}
+.detect-orgs-btn.htmx-request .normal-icon {
+  display: none;
+}
+
 /* =============================================
    Animations
    ============================================= */

@@ -19,6 +19,7 @@ export const accounts = sqliteTable("accounts", {
   claude_cf_clearance: text("claude_cf_clearance").default(""),
   claude_token_expires_at: integer("claude_token_expires_at").default(0),
   github_orgs: text("github_orgs").default(""),
+  billing_org: text("billing_org").default(""),
   login_method: text("login_method").default(""),
   note: text("note").default(""),
   is_paused: integer("is_paused").default(0),

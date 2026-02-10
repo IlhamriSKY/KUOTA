@@ -66,6 +66,7 @@ runMigrations();
 try { sqlite.exec("ALTER TABLE accounts ADD COLUMN login_method TEXT DEFAULT ''"); } catch {}
 try { sqlite.exec("ALTER TABLE accounts ADD COLUMN note TEXT DEFAULT ''"); } catch {}
 try { sqlite.exec("ALTER TABLE accounts ADD COLUMN is_paused INTEGER DEFAULT 0"); } catch {}
+try { sqlite.exec("ALTER TABLE accounts ADD COLUMN billing_org TEXT DEFAULT ''"); } catch {}
 
 
 // --- Constants ---
@@ -80,7 +81,7 @@ const ALLOWED_ACCOUNT_COLUMNS = new Set(
 
 // --- Account CRUD ---
 export function getAllAccounts() {
-  return db.select().from(accounts).orderBy(desc(accounts.is_favorite), asc(accounts.id)).all();
+  return db.select().from(accounts).orderBy(desc(accounts.is_favorite), asc(accounts.is_paused), asc(accounts.id)).all();
 }
 
 export function getAccountById(id) {

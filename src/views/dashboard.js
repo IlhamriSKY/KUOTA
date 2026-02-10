@@ -23,6 +23,9 @@ export function renderDashboard() {
   let claudeCount = 0;
   let webCount = 0;
   let webAvgWeekly = 0;
+  let activeCount = 0;
+  let pausedCount = 0;
+  let inactiveCount = 0;
   const cards = [];
   const loginMethodCounts = {};
 
@@ -30,26 +33,45 @@ export function renderDashboard() {
     const usage = getLatestUsage(acc.id);
     const details = usage ? getUsageDetails(usage.id) : [];
 
-    if (acc.account_type === "claude_code") {
-      const budget = acc.monthly_budget || CLAUDE_CODE_BUDGETS[acc.claude_plan] || 100;
-      claudeCost += usage ? usage.gross_quantity : 0;
-      claudeBudget += budget;
-      claudeCount++;
-    } else if (acc.account_type === "claude_web") {
-      webCount++;
-      webAvgWeekly += usage ? (usage.weekly_usage_pct || 0) : 0;
+    // Track status counts
+    const hasPat = !!acc.pat_token;
+    if (acc.is_paused) {
+      pausedCount++;
+    } else if (hasPat) {
+      activeCount++;
     } else {
-      const limit = PLAN_LIMITS[acc.copilot_plan] || 300;
-      copilotUsed += usage ? usage.gross_quantity : 0;
-      copilotLimit += limit;
-      copilotSpend += usage ? usage.net_amount : 0;
-      copilotCount++;
+      inactiveCount++;
+    }
+
+    // Only include active accounts in Overall Usage
+    const isActive = !acc.is_paused && hasPat;
+
+    if (acc.account_type === "claude_code") {
+      if (isActive) {
+        const budget = acc.monthly_budget || CLAUDE_CODE_BUDGETS[acc.claude_plan] || 100;
+        claudeCost += usage ? usage.gross_quantity : 0;
+        claudeBudget += budget;
+        claudeCount++;
+      }
+    } else if (acc.account_type === "claude_web") {
+      if (isActive) {
+        webCount++;
+        webAvgWeekly += usage ? (usage.weekly_usage_pct || 0) : 0;
+      }
+    } else {
+      if (isActive) {
+        const limit = PLAN_LIMITS[acc.copilot_plan] || 300;
+        copilotUsed += usage ? usage.gross_quantity : 0;
+        copilotLimit += limit;
+        copilotSpend += usage ? usage.net_amount : 0;
+        copilotCount++;
+      }
     }
 
     const lm = resolveLoginMethod(acc);
     loginMethodCounts[lm] = (loginMethodCounts[lm] || 0) + 1;
 
-    cards.push(accountCard({ ...acc, pat_token: !!acc.pat_token }, usage, details));
+    cards.push(accountCard({ ...acc, pat_token: hasPat }, usage, details));
   }
 
   const copilotPct = copilotLimit > 0 ? (copilotUsed / copilotLimit) * 100 : 0;
@@ -92,12 +114,39 @@ export function renderDashboard() {
               </button>`;
     }).join("\n");
 
-  const filterSection = Object.keys(loginMethodCounts).length > 1 ? `
-      <!-- Login Method Filters -->
+  // Status filter badges
+  const statusBadgesHtml = [
+    activeCount > 0 ? `<button type="button" onclick="filterByStatus('active')"
+      class="status-filter-badge inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium border transition-all cursor-pointer bg-emerald-500/5 text-emerald-500 border-emerald-500/20 hover:bg-emerald-500/15 hover:border-emerald-500/40"
+      data-status="active">
+      ${icon("check-circle", 12, "inline")} Active
+      <span class="ml-0.5 text-[10px] font-semibold bg-emerald-500/10 px-1.5 rounded-full">${activeCount}</span>
+    </button>` : "",
+    pausedCount > 0 ? `<button type="button" onclick="filterByStatus('paused')"
+      class="status-filter-badge inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium border transition-all cursor-pointer bg-secondary text-muted-foreground border-border hover:bg-accent hover:border-muted-foreground/40"
+      data-status="paused">
+      ${icon("pause", 12, "inline")} Paused
+      <span class="ml-0.5 text-[10px] font-semibold bg-muted px-1.5 rounded-full">${pausedCount}</span>
+    </button>` : "",
+    inactiveCount > 0 ? `<button type="button" onclick="filterByStatus('inactive')"
+      class="status-filter-badge inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium border transition-all cursor-pointer bg-amber-500/5 text-amber-500 border-amber-500/20 hover:bg-amber-500/15 hover:border-amber-500/40"
+      data-status="inactive">
+      ${icon("alert-triangle", 12, "inline")} Inactive
+      <span class="ml-0.5 text-[10px] font-semibold bg-amber-500/10 px-1.5 rounded-full">${inactiveCount}</span>
+    </button>` : "",
+  ].filter(Boolean).join("\n");
+
+  const hasMultipleStatuses = [activeCount, pausedCount, inactiveCount].filter(c => c > 0).length > 1;
+  const hasMultipleFilters = Object.keys(loginMethodCounts).length > 1 || hasMultipleStatuses;
+
+  const filterSection = hasMultipleFilters ? `
+      <!-- Filters -->
       <div class="flex items-center gap-2 flex-wrap" id="login-filters">
         <span class="text-xs text-muted-foreground font-medium mr-0.5">${icon("filter", 12, "inline")} Filter:</span>
         ${filterBadgesHtml}
-        <button type="button" onclick="resetLoginFilter()"
+        ${(Object.keys(loginMethodCounts).length > 1 && hasMultipleStatuses) ? '<span class="text-muted-foreground/30 text-xs">|</span>' : ""}
+        ${hasMultipleStatuses ? statusBadgesHtml : ""}
+        <button type="button" onclick="resetAllFilters()"
                 id="filter-reset-btn"
                 class="hidden inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium border border-border text-muted-foreground hover:bg-accent hover:text-foreground transition-all cursor-pointer">
           ${icon("close", 12)} Reset
@@ -123,11 +172,11 @@ export function renderDashboard() {
                 <span class="censor-icon-visible">${icon("eye", 14)}</span>
                 <span class="censor-icon-hidden hidden">${icon("eye-off", 14)}</span>
               </button>
-              <button hx-post="/api/refresh-all" hx-target="main" hx-swap="innerHTML"
+              <button onclick="refreshAll(this)" id="refresh-all-btn"
                       class="refresh-btn inline-flex items-center gap-1.5 px-3 py-1.5 border rounded-md hover:bg-accent transition-colors text-xs font-medium" aria-label="Refresh all accounts">
                 <span class="spin-icon">${icon("spinner", 14, "animate-spin")}</span>
                 <span class="normal-icon">${icon("refresh", 14)}</span>
-                Refresh All
+                <span class="refresh-label">Refresh All</span>
               </button>
               <a href="/add" class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity text-xs font-medium" aria-label="Add a new account">
                 ${icon("plus", 14)}

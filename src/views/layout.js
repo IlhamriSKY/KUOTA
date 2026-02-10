@@ -267,8 +267,108 @@ export function layout(title, body, extraHead = "") {
         });
     }
 
-    // Client-side search + login method filter
+    // Refresh All — sequential per-card refresh with loading animation
+    var refreshAllRunning = false;
+    function refreshAll(btn) {
+      if (refreshAllRunning) return;
+      refreshAllRunning = true;
+      btn.disabled = true;
+      btn.classList.add('htmx-request');
+      var label = btn.querySelector('.refresh-label');
+      var originalLabel = label ? label.textContent : 'Refresh All';
+
+      fetch('/api/refresh-all', { method: 'POST' })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          var ids = data.ids || [];
+          if (ids.length === 0) {
+            refreshAllRunning = false;
+            btn.disabled = false;
+            btn.classList.remove('htmx-request');
+            return;
+          }
+          var completed = 0;
+          function updateLabel() {
+            completed++;
+            if (label) label.textContent = completed + ' / ' + ids.length;
+          }
+
+          // Refresh cards sequentially
+          function refreshNext(index) {
+            if (index >= ids.length) {
+              // All done
+              refreshAllRunning = false;
+              btn.disabled = false;
+              btn.classList.remove('htmx-request');
+              if (label) label.textContent = originalLabel;
+              showToast('All accounts refreshed', 'success');
+              return;
+            }
+
+            var id = ids[index];
+            var card = document.getElementById('account-' + id);
+
+            // Add refreshing class + spinner overlay
+            if (card) {
+              card.classList.add('card-refreshing');
+              // Show spinner on the card's refresh button
+              var refreshBtn = card.querySelector('.refresh-btn');
+              if (refreshBtn) refreshBtn.classList.add('htmx-request');
+              // Add spinner overlay
+              var overlay = document.createElement('div');
+              overlay.className = 'refresh-overlay';
+              overlay.innerHTML = '<div class="animate-spin text-primary">' + 
+                '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>' +
+                '</div>';
+              card.appendChild(overlay);
+            }
+
+            // Trigger refresh for this card
+            fetch('/api/refresh/' + id, { method: 'POST' })
+              .then(function(r) { return r.text(); })
+              .then(function(html) {
+                if (card) {
+                  var temp = document.createElement('div');
+                  temp.innerHTML = html;
+                  var newCard = temp.firstElementChild;
+                  if (newCard) {
+                    newCard.classList.add('card-refreshed');
+                    card.replaceWith(newCard);
+                    htmx.process(newCard);
+                    // Brief flash to indicate completion
+                    setTimeout(function() { newCard.classList.remove('card-refreshed'); }, 1500);
+                  }
+                }
+                updateLabel();
+                refreshNext(index + 1);
+              })
+              .catch(function() {
+                if (card) {
+                  card.classList.remove('card-refreshing');
+                  var ov = card.querySelector('.refresh-overlay');
+                  if (ov) ov.remove();
+                  var rb = card.querySelector('.refresh-btn');
+                  if (rb) rb.classList.remove('htmx-request');
+                }
+                updateLabel();
+                refreshNext(index + 1);
+              });
+          }
+
+          if (label) label.textContent = '0 / ' + ids.length;
+          refreshNext(0);
+        })
+        .catch(function() {
+          refreshAllRunning = false;
+          btn.disabled = false;
+          btn.classList.remove('htmx-request');
+          showToast('Refresh failed', 'error');
+        });
+    }
+
+    // Client-side search + login method + status filter
     var activeLoginFilter = null;
+    var activeStatusFilter = null;
 
     function applyFilters() {
       var q = (document.getElementById('account-search')?.value || '').toLowerCase().trim();
@@ -279,9 +379,11 @@ export function layout(title, body, extraHead = "") {
         var uname = (card.getAttribute('data-username') || '').toLowerCase();
         var dname = (card.getAttribute('data-displayname') || '').toLowerCase();
         var lm = card.getAttribute('data-loginmethod') || '';
+        var st = card.getAttribute('data-status') || '';
         var matchSearch = !q || uname.indexOf(q) !== -1 || dname.indexOf(q) !== -1;
         var matchLogin = !activeLoginFilter || lm === activeLoginFilter;
-        if (matchSearch && matchLogin) {
+        var matchStatus = !activeStatusFilter || st === activeStatusFilter;
+        if (matchSearch && matchLogin && matchStatus) {
           card.style.display = '';
           visible++;
         } else {
@@ -289,14 +391,14 @@ export function layout(title, body, extraHead = "") {
         }
       });
       if (noResults) {
-        var hasFilter = q || activeLoginFilter;
+        var hasFilter = q || activeLoginFilter || activeStatusFilter;
         noResults.style.display = (visible === 0 && hasFilter) ? 'flex' : 'none';
         noResults.classList.toggle('hidden', visible > 0 || !hasFilter);
       }
-      // Show/hide reset button based on search or filter
+      // Show/hide reset button
       var resetBtn = document.getElementById('filter-reset-btn');
       if (resetBtn) {
-        if (q || activeLoginFilter) {
+        if (q || activeLoginFilter || activeStatusFilter) {
           resetBtn.classList.remove('hidden');
         } else {
           resetBtn.classList.add('hidden');
@@ -314,7 +416,6 @@ export function layout(title, body, extraHead = "") {
       } else {
         activeLoginFilter = method;
       }
-      // Update badge active states
       document.querySelectorAll('.login-filter-badge').forEach(function(btn) {
         if (btn.getAttribute('data-method') === activeLoginFilter) {
           btn.classList.add('border-current', 'font-semibold');
@@ -322,21 +423,32 @@ export function layout(title, body, extraHead = "") {
           btn.classList.remove('border-current', 'font-semibold');
         }
       });
-      // Show/hide reset button
-      var resetBtn = document.getElementById('filter-reset-btn');
-      if (resetBtn) {
-        if (activeLoginFilter) {
-          resetBtn.classList.remove('hidden');
-        } else {
-          resetBtn.classList.add('hidden');
-        }
-      }
       applyFilters();
     }
 
-    function resetLoginFilter() {
+    function filterByStatus(status) {
+      if (activeStatusFilter === status) {
+        activeStatusFilter = null;
+      } else {
+        activeStatusFilter = status;
+      }
+      document.querySelectorAll('.status-filter-badge').forEach(function(btn) {
+        if (btn.getAttribute('data-status') === activeStatusFilter) {
+          btn.classList.add('border-current', 'font-semibold');
+        } else {
+          btn.classList.remove('border-current', 'font-semibold');
+        }
+      });
+      applyFilters();
+    }
+
+    function resetAllFilters() {
       activeLoginFilter = null;
+      activeStatusFilter = null;
       document.querySelectorAll('.login-filter-badge').forEach(function(btn) {
+        btn.classList.remove('border-current', 'font-semibold');
+      });
+      document.querySelectorAll('.status-filter-badge').forEach(function(btn) {
         btn.classList.remove('border-current', 'font-semibold');
       });
       var resetBtn = document.getElementById('filter-reset-btn');

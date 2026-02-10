@@ -131,11 +131,8 @@ function errorBanner(error) {
 
 function noteSection(note) {
   if (!note) return "";
-  return `<div class="px-4 py-2 border-t">
-    <p class="text-[11px] text-muted-foreground flex items-start gap-1.5">
-      ${icon("file-text", 10, "flex-shrink-0 mt-0.5")}
-      <span class="break-words whitespace-pre-wrap">${escapeHtml(note)}</span>
-    </p>
+  return `<div class="mx-4 mb-3 px-3 py-2 rounded-md bg-muted/50 border border-border/50">
+    <p class="text-[11px] text-muted-foreground break-words whitespace-pre-wrap leading-relaxed">${escapeHtml(note)}</p>
   </div>`;
 }
 
@@ -152,11 +149,12 @@ function copilotAccountCard(account, usage, details = [], error = null) {
   const orgs = account.github_orgs ? account.github_orgs.split(",").filter(Boolean) : [];
 
   return `
-     <div class="bg-card border ${account.is_paused ? "border-red-500/50" : ""} rounded-md fade-in flex flex-col account-card ${isFav ? "ring-1 ring-amber-400" : ""}" id="account-${account.id}"
+     <div class="bg-card border ${account.is_paused ? "border-red-500/50" : ""} rounded-md fade-in flex flex-col account-card relative ${isFav ? "ring-1 ring-amber-400" : ""}" id="account-${account.id}"
          data-username="${escapeHtml(account.github_username)}"
          data-displayname="${escapeHtml(account.display_name || "")}"
          data-favorite="${isFav ? "1" : "0"}"
          data-paused="${account.is_paused ? "1" : "0"}"
+         data-status="${account.is_paused ? "paused" : account.pat_token ? "active" : "inactive"}"
          data-loginmethod="${resolveLoginMethod(account)}">
       <div class="p-4 pb-0">
         <div class="flex items-start justify-between gap-2">
@@ -197,12 +195,15 @@ function copilotAccountCard(account, usage, details = [], error = null) {
             </button>
           </div>
         </div>
-        ${orgs.length > 0 ? `<div class="flex items-center gap-1.5 mt-2 flex-wrap censor-target">${orgs.map(o => `<a href="https://github.com/${escapeHtml(o)}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground font-medium hover:bg-accent hover:text-foreground transition-colors">${icon("building", 9)} ${escapeHtml(o)}</a>`).join("")}</div>` : ""}
+        ${orgs.length > 0 ? `<div class="flex items-center gap-1.5 mt-2 flex-wrap censor-target">${orgs.map(o => {
+          const isBillingOrg = account.billing_org === o;
+          return `<a href="https://github.com/${escapeHtml(o)}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded ${isBillingOrg ? "bg-primary/15 text-primary ring-1 ring-primary/30" : "bg-secondary text-muted-foreground"} font-medium hover:bg-accent hover:text-foreground transition-colors" ${isBillingOrg ? 'data-tooltip="Billing source"' : ""}>${icon(isBillingOrg ? "zap" : "building", 9)} ${escapeHtml(o)}</a>`;
+        }).join("")}</div>` : ""}
       </div>
       ${errorBanner(error)}
       
       <div class="p-4 space-y-2.5 flex-1">
-        ${usageBar(pct)}
+        ${usageBar(pct, `${PLAN_LABELS[account.copilot_plan] || account.copilot_plan} requests`)}
         
         <div class="flex items-center justify-between text-xs">
           <span class="text-muted-foreground">
@@ -269,11 +270,12 @@ function claudeWebAccountCard(account, usage, details = [], error = null) {
   else if (sessionPct > 50) { sessionColor = "bg-amber-500"; sessionTextCls = "text-amber-500"; }
 
   return `
-    <div class="bg-card border ${account.is_paused ? "border-red-500/50" : ""} rounded-md fade-in flex flex-col account-card ${isFav ? "ring-1 ring-amber-400/40" : ""}" id="account-${account.id}"
+    <div class="bg-card border ${account.is_paused ? "border-red-500/50" : ""} rounded-md fade-in flex flex-col account-card relative ${isFav ? "ring-1 ring-amber-400/40" : ""}" id="account-${account.id}"
          data-username="${escapeHtml(account.github_username)}"
          data-displayname="${escapeHtml(account.display_name || "")}"
          data-favorite="${isFav ? "1" : "0"}"
          data-paused="${account.is_paused ? "1" : "0"}"
+         data-status="${account.is_paused ? "paused" : account.pat_token ? "active" : "inactive"}"
          data-loginmethod="${resolveLoginMethod(account)}">
       <div class="p-4 pb-0">
         <div class="flex items-start justify-between gap-2">
@@ -439,11 +441,12 @@ function claudeCodeAccountCard(account, usage, details = [], error = null) {
   const prs = usage ? usage.pull_requests || 0 : 0;
 
   return `
-    <div class="bg-card border ${account.is_paused ? "border-red-500/50" : ""} rounded-md fade-in flex flex-col account-card ${isFav ? "ring-1 ring-amber-400/40" : ""}" id="account-${account.id}"
+    <div class="bg-card border ${account.is_paused ? "border-red-500/50" : ""} rounded-md fade-in flex flex-col account-card relative ${isFav ? "ring-1 ring-amber-400/40" : ""}" id="account-${account.id}"
          data-username="${escapeHtml(account.github_username)}"
          data-displayname="${escapeHtml(account.display_name || "")}"
          data-favorite="${isFav ? "1" : "0"}"
          data-paused="${account.is_paused ? "1" : "0"}"
+         data-status="${account.is_paused ? "paused" : account.pat_token ? "active" : "inactive"}"
          data-loginmethod="${resolveLoginMethod(account)}">
       <div class="p-4 pb-0">
         <div class="flex items-start justify-between gap-2">
@@ -739,14 +742,23 @@ export function addAccountForm(hasOAuthClientId) {
             <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" class="text-primary hover:underline">Fine-grained PAT</a>.
           </p>
           
-          <form hx-post="/api/account/add-pat" hx-target="#pat-result" hx-swap="innerHTML" class="space-y-3">
+          <form hx-post="/api/account/add-pat" hx-target="#pat-result" hx-swap="innerHTML" hx-disabled-elt="find button[type='submit']" class="space-y-3">
             <div>
               <label class="block text-xs font-medium mb-1">Personal Access Token</label>
-              <input type="password" name="pat" required placeholder="ghp_... or github_pat_..." 
-                     class="input-field w-full px-2.5 py-1.5 bg-background border rounded text-foreground text-xs font-mono">
+              <div class="flex gap-2">
+                <input type="password" name="pat" id="pat-input" required placeholder="ghp_... or github_pat_..." 
+                       class="input-field flex-1 px-2.5 py-1.5 bg-background border rounded text-foreground text-xs font-mono">
+                <button type="button" hx-post="/api/account/detect-orgs" hx-include="#pat-input" hx-target="#org-detect-result" hx-swap="innerHTML"
+                        class="detect-orgs-btn inline-flex items-center gap-1.5 px-3 py-1.5 bg-secondary text-foreground border rounded text-xs font-medium hover:bg-accent transition-colors whitespace-nowrap">
+                  <span class="spin-icon">${icon("spinner", 12, "animate-spin")}</span>
+                  <span class="normal-icon">${icon("search", 12)}</span>
+                  Detect
+                </button>
+              </div>
             </div>
+            <div id="org-detect-result"></div>
             <div>
-              <label class="block text-xs font-medium mb-1">Copilot Plan</label>
+              <label class="block text-xs font-medium mb-1">Copilot Plan <span class="text-muted-foreground font-normal">(auto-detected via Detect)</span></label>
               <select name="plan" class="input-field w-full px-2.5 py-1.5 bg-background border rounded text-foreground text-xs">
                 <option value="free">Free (50 req/month)</option>
                 <option value="pro" selected>Pro (300 req/month)</option>
@@ -786,6 +798,10 @@ export function addAccountForm(hasOAuthClientId) {
             <span class="flex-shrink-0 w-5 h-5 rounded-full bg-primary/15 text-primary text-[10px] font-bold flex items-center justify-center">2</span>
             <span class="pt-0.5"><strong class="text-foreground">Fine-grained</strong> - <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" class="text-primary hover:underline">Create here</a>. Set <strong class="text-foreground">Plan: Read-only</strong>.</span>
           </div>
+          <div class="flex items-start gap-2.5">
+            <span class="flex-shrink-0 w-5 h-5 rounded-full bg-amber-500/15 text-amber-500 text-[10px] font-bold flex items-center justify-center">!</span>
+            <span class="pt-0.5"><strong class="text-foreground">Copilot Business/Enterprise (org-managed)</strong>: Fine-grained PAT also needs <strong class="text-foreground">Organization Administration: Read-only</strong> permission on the org that manages your Copilot seat.</span>
+          </div>
         </div>
       </div>
 
@@ -805,7 +821,7 @@ export function addAccountForm(hasOAuthClientId) {
             via <code class="bg-muted px-1 py-0.5 rounded-sm text-[11px]">api.anthropic.com</code>.
           </p>
           
-          <form hx-post="/api/account/add-claude-web" hx-target="#claude-web-result" hx-swap="innerHTML" class="space-y-3">
+          <form hx-post="/api/account/add-claude-web" hx-target="#claude-web-result" hx-swap="innerHTML" hx-disabled-elt="find button[type='submit']" class="space-y-3">
             <!-- Auto-detect option -->
             <div class="bg-emerald-500/10 border border-emerald-500/20 rounded-md p-3">
               <label class="flex items-center gap-2 cursor-pointer">
@@ -902,7 +918,7 @@ export function addAccountForm(hasOAuthClientId) {
             <a href="https://console.anthropic.com/settings/admin-keys" target="_blank" class="text-primary hover:underline">Anthropic Console</a>.
           </p>
           
-          <form hx-post="/api/account/add-claude" hx-target="#claude-result" hx-swap="innerHTML" class="space-y-3">
+          <form hx-post="/api/account/add-claude" hx-target="#claude-result" hx-swap="innerHTML" hx-disabled-elt="find button[type='submit']" class="space-y-3">
             <div>
               <label class="block text-xs font-medium mb-1">Display Name</label>
               <input type="text" name="name" required placeholder="e.g., My Team, Personal API" 
@@ -1054,7 +1070,7 @@ export function editAccountForm(account) {
           </button>
         </div>
       </div>
-      <form hx-put="/api/account/${account.id}" hx-target="#account-${account.id}" hx-swap="outerHTML" class="p-4 space-y-3">
+      <form hx-put="/api/account/${account.id}" hx-target="#account-${account.id}" hx-swap="outerHTML" hx-disabled-elt="find button[type='submit']" class="p-4 space-y-3">
         ${isClaudeWeb ? `
         <!-- Auto-detect option -->
         <div class="bg-emerald-500/10 border border-emerald-500/20 rounded-md p-2.5">
@@ -1131,7 +1147,17 @@ export function editAccountForm(account) {
           </p>
         </div>
         <div>
-          <label class="block text-xs font-medium mb-1">Copilot Plan</label>
+          <label class="block text-xs font-medium mb-1">Billing Source</label>
+          <select name="billing_org" class="input-field w-full px-2.5 py-1.5 bg-background border rounded text-foreground text-xs">
+            <option value=""${!account.billing_org ? " selected" : ""}>Personal (${escapeHtml(account.github_username)})</option>
+            ${(account.github_orgs || "").split(",").filter(Boolean).map(org => 
+              `<option value="${escapeHtml(org)}"${account.billing_org === org ? " selected" : ""}>${escapeHtml(org)}</option>`
+            ).join("")}
+          </select>
+          <p class="text-[11px] text-muted-foreground mt-1">Select the org that manages your Copilot, or "Personal" if self-managed.</p>
+        </div>
+        <div>
+          <label class="block text-xs font-medium mb-1">Copilot Plan <span class="text-muted-foreground font-normal">(auto-detected when new token is set)</span></label>
           <select name="plan" class="input-field w-full px-2.5 py-1.5 bg-background border rounded text-foreground text-xs">
             <option value="free" ${account.copilot_plan === "free" ? "selected" : ""}>Free (50 req/month)</option>
             <option value="pro" ${account.copilot_plan === "pro" ? "selected" : ""}>Pro (300 req/month)</option>
