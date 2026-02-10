@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { encrypt, decrypt } from "../services/crypto.js";
-import { getUser, getPremiumRequestUsage, getBillingUsage, parseUsageData, verifyPat, getUserOrgs, getOrgPremiumRequestUsage, getOrgBillingUsage, detectCopilotPlan } from "../services/github.js";
+import { getUser, getPremiumRequestUsage, getBillingUsage, parseUsageData, verifyPat, getUserOrgs, getOrgPremiumRequestUsage, getOrgBillingUsage, detectCopilotPlan, getCopilotSeatActivity } from "../services/github.js";
 import { getClaudeCodeMonthUsage, parseClaudeCodeData, verifyAdminKey } from "../services/anthropic.js";
 import { verifyAccessToken, getClaudeWebUsage, getValidToken, readLocalCredentials, refreshAccessToken } from "../services/claudeWeb.js";
 import { formatDateNow } from "../views/layout.js";
@@ -212,6 +212,7 @@ api.post("/account/add-pat", async (c) => {
         billing_org: billingOrg,
         login_method: "pat",
         note,
+        reset_date: "",
       });
       await fetchAndStoreUsage(newAcc.id, user.login, pat, plan, billingOrg);
     }
@@ -499,7 +500,10 @@ api.put("/account/:id", async (c) => {
   let newPlan = validatePlan(body.plan) || acc.copilot_plan;
   const newBillingOrg = body.billing_org !== undefined ? (body.billing_org || "").trim() : acc.billing_org;
 
-  const updates = { copilot_plan: newPlan, note: editNote, billing_org: newBillingOrg };
+  // Handle reset_date
+  const newResetDate = body.reset_date !== undefined ? (body.reset_date || "").trim() : acc.reset_date;
+
+  const updates = { copilot_plan: newPlan, note: editNote, billing_org: newBillingOrg, reset_date: newResetDate };
 
   if (newPat) {
     // Verify new token
@@ -1011,8 +1015,34 @@ async function fetchAndStoreUsage(accountId, username, pat, plan, billingOrg = n
   });
 }
 
+// Fetch and store Copilot last activity info (editor, last active time)
+async function fetchCopilotActivity(accountId, pat, username, billingOrg, allOrgs) {
+  // Try billing org first, then all orgs
+  const orgsToTry = [];
+  if (billingOrg) orgsToTry.push(billingOrg);
+  for (const org of (allOrgs || [])) {
+    if (org !== billingOrg) orgsToTry.push(org);
+  }
+
+  for (const org of orgsToTry) {
+    try {
+      const activity = await getCopilotSeatActivity(pat, org, username);
+      if (activity && (activity.last_activity_at || activity.last_activity_editor)) {
+        updateAccount(accountId, {
+          last_activity_at: activity.last_activity_at || "",
+          last_activity_editor: activity.last_activity_editor || "",
+        });
+        return activity;
+      }
+    } catch (err) {
+      console.log(`Activity fetch failed for ${username} in org ${org}: ${err.message}`);
+    }
+  }
+  return null;
+}
+
 // Export for use in scheduled refresh
-export { fetchAndStoreUsage };
+export { fetchAndStoreUsage, fetchCopilotActivity };
 
 // ===================== Claude Code Helpers =====================
 
@@ -1148,6 +1178,16 @@ export async function refreshAccount(acc) {
     }
 
     await fetchAndStoreUsage(acc.id, acc.github_username, key, acc.copilot_plan, billingOrg);
+
+    // Fetch last activity info (editor session) for org-managed accounts
+    const allOrgs = acc.github_orgs ? acc.github_orgs.split(",").filter(Boolean) : [];
+    if (billingOrg || allOrgs.length > 0) {
+      try {
+        await fetchCopilotActivity(acc.id, key, acc.github_username, billingOrg, allOrgs);
+      } catch (err) {
+        console.log(`Activity fetch skipped for ${acc.github_username}: ${err.message}`);
+      }
+    }
   }
 }
 

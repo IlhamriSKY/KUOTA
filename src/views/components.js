@@ -1,7 +1,93 @@
 import { icon } from "./icons.js";
-import { formatDate } from "./layout.js";
+import { formatDate, formatRelativeTime } from "./layout.js";
 import { escapeHtml, formatNumber } from "../utils.js";
 import { PLAN_LIMITS, CLAUDE_CODE_BUDGETS } from "../db/sqlite.js";
+
+// ============================================================
+//  Reset date helpers
+// ============================================================
+function toDateString(d) {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function getNextMonthFirstDay() {
+  const now = new Date();
+  const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  return toDateString(next);
+}
+
+function getResetDateForAccount(account) {
+  // If manually set, check if it's in the past — auto-advance to next occurrence
+  if (account.reset_date) {
+    const resetD = new Date(account.reset_date + "T00:00:00");
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    if (resetD < now) {
+      // Advance: keep the same day-of-month, move to next future month
+      const day = resetD.getDate();
+      let month = now.getMonth();
+      let year = now.getFullYear();
+      // If today's date is past the reset day, go to next month
+      if (now.getDate() >= day) {
+        month++;
+        if (month > 11) { month = 0; year++; }
+      }
+      const advanced = new Date(year, month, Math.min(day, new Date(year, month + 1, 0).getDate()));
+      return toDateString(advanced);
+    }
+    return account.reset_date;
+  }
+  // Personal accounts (free/pro/pro_plus without billing_org) reset on 1st of next month
+  const isPersonal = !account.billing_org && ["free", "pro", "pro_plus"].includes(account.copilot_plan);
+  if (isPersonal) return getNextMonthFirstDay();
+  // Org accounts — no default, must be set manually
+  return "";
+}
+
+function resetCountdownSection(account) {
+  const resetDate = getResetDateForAccount(account);
+  if (!resetDate) return "";
+
+  const reset = new Date(resetDate + "T00:00:00");
+  const now = new Date();
+  const diffMs = reset.getTime() - now.getTime();
+  const daysLeft = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+
+  const dd = String(reset.getDate()).padStart(2, "0");
+  const mm = String(reset.getMonth() + 1).padStart(2, "0");
+  const yyyy = reset.getFullYear();
+  const formattedDate = `${dd}-${mm}-${yyyy}`;
+
+  let countdownText = "";
+  let countdownColor = "text-muted-foreground";
+  if (daysLeft <= 0) {
+    countdownText = "Resetting today";
+    countdownColor = "text-emerald-500";
+  } else if (daysLeft === 1) {
+    countdownText = "1 day left";
+    countdownColor = "text-amber-500";
+  } else if (daysLeft <= 3) {
+    countdownText = `${daysLeft} days left`;
+    countdownColor = "text-amber-500";
+  } else {
+    countdownText = `${daysLeft} days left`;
+  }
+
+  const isAutoReset = !account.reset_date && !account.billing_org;
+
+  return `<div class="flex items-center justify-between text-[11px] mb-0.5">
+      <span class="${countdownColor} flex items-center gap-1" data-tooltip="Resets on ${formattedDate}${isAutoReset ? ' (auto — 1st of month)' : ''}">
+        ${icon("calendar", 11)}
+        <span class="font-medium tabular-nums">${countdownText}</span>
+      </span>
+      <span class="text-muted-foreground tabular-nums">${formattedDate}</span>
+    </div>`;
+}
+
+export { getNextMonthFirstDay };
 
 // ============================================================
 //  Plan config
@@ -137,6 +223,79 @@ function noteSection(note) {
 }
 
 // ============================================================
+//  Copilot Activity Section (last editor session)
+// ============================================================
+function parseEditorString(editorStr) {
+  if (!editorStr) return null;
+  // Format: "vscode/1.95.0/copilot/1.86.82" or "jetbrains/2024.1" or "cli/1.0"
+  const lower = editorStr.toLowerCase();
+  if (lower.includes("vscode") || lower.includes("vs code")) {
+    return { name: "VS Code", icon: "code", color: "text-blue-500" };
+  }
+  if (lower.includes("jetbrains") || lower.includes("intellij") || lower.includes("pycharm") || lower.includes("webstorm") || lower.includes("rider") || lower.includes("goland") || lower.includes("phpstorm")) {
+    return { name: "JetBrains", icon: "code", color: "text-orange-500" };
+  }
+  if (lower.includes("neovim") || lower.includes("nvim")) {
+    return { name: "Neovim", icon: "terminal", color: "text-emerald-500" };
+  }
+  if (lower.includes("vim")) {
+    return { name: "Vim", icon: "terminal", color: "text-emerald-500" };
+  }
+  if (lower.includes("cli") || lower.includes("copilot-cli") || lower.includes("copilot in the cli")) {
+    return { name: "CLI", icon: "terminal", color: "text-purple-500" };
+  }
+  if (lower.includes("xcode")) {
+    return { name: "Xcode", icon: "code", color: "text-blue-400" };
+  }
+  if (lower.includes("visual studio") && !lower.includes("code")) {
+    return { name: "Visual Studio", icon: "code", color: "text-purple-400" };
+  }
+  if (lower.includes("eclipse")) {
+    return { name: "Eclipse", icon: "code", color: "text-amber-500" };
+  }
+  // Generic fallback
+  const firstPart = editorStr.split("/")[0];
+  return { name: firstPart || "Unknown", icon: "monitor", color: "text-muted-foreground" };
+}
+
+function copilotActivitySection(account) {
+  if (!account.last_activity_at && !account.last_activity_editor) return "";
+
+  const editor = parseEditorString(account.last_activity_editor);
+  const relTime = account.last_activity_at ? formatRelativeTime(account.last_activity_at) : "";
+  const absTime = account.last_activity_at ? formatDate(account.last_activity_at) : "";
+  const editorRaw = account.last_activity_editor || "";
+
+  // Determine if recently active (within 15 minutes)
+  let isRecentlyActive = false;
+  if (account.last_activity_at) {
+    const diff = Date.now() - new Date(account.last_activity_at).getTime();
+    isRecentlyActive = diff < 15 * 60 * 1000;
+  }
+
+  const dotColor = isRecentlyActive ? "bg-emerald-500" : "bg-muted-foreground/50";
+  const dotPulse = isRecentlyActive ? "animate-pulse" : "";
+
+  return `<div class="mx-4 mb-3 px-3 py-2 rounded-md bg-muted/30 border border-border/50">
+    <div class="flex items-center justify-between gap-2">
+      <div class="flex items-center gap-2 min-w-0">
+        <span class="relative flex h-2 w-2 flex-shrink-0">
+          ${isRecentlyActive ? `<span class="absolute inline-flex h-full w-full rounded-full ${dotColor} opacity-75 ${dotPulse}"></span>` : ""}
+          <span class="relative inline-flex rounded-full h-2 w-2 ${dotColor}"></span>
+        </span>
+        ${editor ? `<span class="${editor.color} flex-shrink-0">${icon(editor.icon, 12)}</span>` : ""}
+        <span class="text-[11px] font-medium ${isRecentlyActive ? "text-foreground" : "text-muted-foreground"} truncate" ${editorRaw ? `data-tooltip="${escapeHtml(editorRaw)}"` : ""}>
+          ${editor ? escapeHtml(editor.name) : "Unknown editor"}
+        </span>
+      </div>
+      <span class="text-[10px] text-muted-foreground flex-shrink-0 tabular-nums" ${absTime ? `data-tooltip="${escapeHtml(absTime)}"` : ""}>
+        ${relTime || "—"}
+      </span>
+    </div>
+  </div>`;
+}
+
+// ============================================================
 //  Copilot Account Card
 // ============================================================
 function copilotAccountCard(account, usage, details = [], error = null) {
@@ -203,6 +362,7 @@ function copilotAccountCard(account, usage, details = [], error = null) {
       ${errorBanner(error)}
       
       <div class="p-4 space-y-2.5 flex-1">
+        ${resetCountdownSection(account)}
         ${usageBar(pct, `${PLAN_LABELS[account.copilot_plan] || account.copilot_plan} requests`)}
         
         <div class="flex items-center justify-between text-xs">
@@ -215,6 +375,7 @@ function copilotAccountCard(account, usage, details = [], error = null) {
         ${details.length > 0 ? modelTable(details) : ""}
       </div>
 
+      ${copilotActivitySection(account)}
       ${noteSection(account.note)}
       <div class="px-4 py-2.5 border-t flex items-center justify-between bg-muted/30 rounded-b-md mt-auto">
         <span class="text-[11px] text-muted-foreground flex items-center gap-1" data-tooltip="Last fetched">
@@ -1165,6 +1326,12 @@ export function editAccountForm(account) {
             <option value="business" ${account.copilot_plan === "business" ? "selected" : ""}>Business (300 req/month)</option>
             <option value="enterprise" ${account.copilot_plan === "enterprise" ? "selected" : ""}>Enterprise (1,000 req/month)</option>
           </select>
+        </div>
+        <div>
+          <label class="block text-xs font-medium mb-1">Reset Date <span class="text-muted-foreground font-normal">(${account.billing_org ? "org — set manually" : "auto 1st of month, or override"})</span></label>
+          <input type="date" name="reset_date" value="${escapeHtml(account.reset_date || getResetDateForAccount(account))}" 
+                 class="input-field w-full px-2.5 py-1.5 bg-background border rounded text-foreground text-xs">
+          <p class="text-[11px] text-muted-foreground mt-1">${account.billing_org ? "Organization billing cycle — set your org's reset date." : "Personal accounts reset on the 1st. Set a custom date to override."}</p>
         </div>
         `}
         <div>

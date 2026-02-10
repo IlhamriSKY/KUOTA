@@ -198,6 +198,40 @@ export async function detectCopilotPlan(token, username, orgs = []) {
   }
 }
 
+// Get Copilot seat activity for a user in an org
+// Returns: { last_activity_at, last_activity_editor } or null
+export async function getCopilotSeatActivity(token, org, username) {
+  try {
+    // Try single-user endpoint first
+    const res = await fetch(`${API}/orgs/${org}/members/${username}/copilot`, { headers: headers(token) });
+    if (res.ok) {
+      const data = await res.json();
+      return {
+        last_activity_at: data.last_activity_at || null,
+        last_activity_editor: data.last_activity_editor || null,
+      };
+    }
+  } catch {}
+
+  // Fallback: scan seats list
+  try {
+    const res = await fetch(`${API}/orgs/${org}/copilot/billing/seats?per_page=100`, { headers: headers(token) });
+    if (res.ok) {
+      const data = await res.json();
+      const seats = data.seats || [];
+      const seat = seats.find(s => s.assignee?.login?.toLowerCase() === username.toLowerCase());
+      if (seat) {
+        return {
+          last_activity_at: seat.last_activity_at || null,
+          last_activity_editor: seat.last_activity_editor || null,
+        };
+      }
+    }
+  } catch {}
+
+  return null;
+}
+
 // Verify a PAT can access billing (user-level or org-level)
 export async function verifyPat(token, username) {
   const now = new Date();

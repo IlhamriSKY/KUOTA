@@ -67,6 +67,9 @@ try { sqlite.exec("ALTER TABLE accounts ADD COLUMN login_method TEXT DEFAULT ''"
 try { sqlite.exec("ALTER TABLE accounts ADD COLUMN note TEXT DEFAULT ''"); } catch {}
 try { sqlite.exec("ALTER TABLE accounts ADD COLUMN is_paused INTEGER DEFAULT 0"); } catch {}
 try { sqlite.exec("ALTER TABLE accounts ADD COLUMN billing_org TEXT DEFAULT ''"); } catch {}
+try { sqlite.exec("ALTER TABLE accounts ADD COLUMN last_activity_at TEXT DEFAULT ''"); } catch {}
+try { sqlite.exec("ALTER TABLE accounts ADD COLUMN last_activity_editor TEXT DEFAULT ''"); } catch {}
+try { sqlite.exec("ALTER TABLE accounts ADD COLUMN reset_date TEXT DEFAULT ''"); } catch {}
 
 
 // --- Constants ---
@@ -150,7 +153,7 @@ export function upsertUsageHistory({ account_id, year, month, gross_quantity, in
     weekly_reset_at: weekly_reset_at || "", extra_usage_enabled: extra_usage_enabled ? 1 : 0,
     extra_usage_spent: extra_usage_spent || 0, extra_usage_limit: extra_usage_limit || 0,
     extra_usage_balance: extra_usage_balance || 0, extra_usage_reset_at: extra_usage_reset_at || "",
-    fetched_at: sql`datetime('now')`,
+    fetched_at: sql`datetime('now', 'localtime')`,
   };
 
   // Build conflict update set dynamically - excludes target columns

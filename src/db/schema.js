@@ -23,6 +23,9 @@ export const accounts = sqliteTable("accounts", {
   login_method: text("login_method").default(""),
   note: text("note").default(""),
   is_paused: integer("is_paused").default(0),
+  last_activity_at: text("last_activity_at").default(""),
+  last_activity_editor: text("last_activity_editor").default(""),
+  reset_date: text("reset_date").default(""),
   created_at: text("created_at").default(sql`(datetime('now'))`),
   updated_at: text("updated_at").default(sql`(datetime('now'))`),
 });

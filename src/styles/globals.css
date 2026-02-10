@@ -161,6 +161,11 @@
   transition: border-color 0.2s ease, transform 0.2s ease;
 }
 .account-card[data-favorite="1"]:hover {
+  --tw-ring-color: #fde68a;
+  --tw-ring-opacity: 1;
+}
+.account-card[data-paused="1"]:hover {
+  border-color: hsl(0 72% 55% / 0.8);
 }
 
 .progress-fill {
@@ -374,4 +379,37 @@ select.input-field {
 /* Allow interaction on form inputs even when censored */
 [data-censored] form .censor-target {
   pointer-events: auto;
+}
+
+/* =============================================
+   Date Picker Styling
+   ============================================= */
+input[type="date"].input-field {
+  position: relative;
+  color-scheme: dark;
+}
+html:not(.dark) input[type="date"].input-field {
+  color-scheme: light;
+}
+
+/* Custom calendar icon */
+input[type="date"].input-field::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.7;
+  padding: 2px;
+  border-radius: 3px;
+  transition: opacity 0.15s, background-color 0.15s;
+}
+input[type="date"].input-field::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+  background-color: hsl(var(--accent));
+}
+
+/* Dark mode: invert the icon so it's visible */
+.dark input[type="date"].input-field::-webkit-calendar-picker-indicator {
+  filter: invert(0.8);
+}
+.dark input[type="date"].input-field::-webkit-calendar-picker-indicator:hover {
+  filter: invert(0.9);
+  background-color: hsl(var(--accent));
 }
