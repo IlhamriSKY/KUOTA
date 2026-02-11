@@ -87,7 +87,7 @@ function resetCountdownSection(account) {
     </div>`;
 }
 
-export { getNextMonthFirstDay };
+
 
 
 //  Plan config

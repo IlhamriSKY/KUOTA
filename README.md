@@ -9,11 +9,12 @@ Built with [Bun](https://bun.sh), [Hono](https://hono.dev), [HTMX](https://htmx.
 ## Features
 
 - **Multi-account** - monitor multiple GitHub Copilot and Claude Code accounts in one dashboard
-- **GitHub Copilot** - track completions usage, chat conversations, total requests, and premium request consumption
-- **Claude Code** - monitor API usage, total cost, budget limits, active sessions, and token consumption
-- **Claude Pro/Max** - track daily message limits and weekly usage caps via Claude Code CLI OAuth credentials (auto-refresh supported)
-- **Auto-refresh** - usage data automatically refreshed every hour in the background
+- **GitHub Copilot** - track premium request consumption, per-model breakdown, overage costs, and last editor activity
+- **Claude Code** - monitor API costs, monthly budget, sessions, and per-model token usage
+- **Claude Pro/Max** - track session and weekly usage limits via Claude Code CLI OAuth credentials
+- **Auto-refresh** - configurable auto-refresh interval (default every 60 minutes)
 - **MySQL backup** - optional sync from local SQLite database to remote MySQL server
+- **Desktop app** - build as a standalone `.exe` with native webview window (no browser needed)
 - **PWA Ready** - install as a standalone progressive web app on any device
 
 ## Requirements
@@ -47,16 +48,8 @@ Open [http://localhost:3000](http://localhost:3000) and add your accounts.
 | Command               | Description                              |
 | --------------------- | ---------------------------------------- |
 | `bun run start`       | Build all + start production server      |
-| `bun run dev`         | Fast build + start with hot reload (no icon rebuild) |
-| `bun run build`       | Build all assets (CSS + icons + vendor)  |
-| `bun run build:dev`   | Build for development (CSS + vendor only) |
-| `bun run build:css`   | Build Tailwind CSS (minified)            |
-| `bun run build:icons` | Generate PWA icons from SVG              |
 | `bun run build:exe`   | Compile standalone `.exe` (output in `dist/`) |
-| `bun run build:css:watch` | Watch mode for Tailwind CSS          |
-| `bun run db:generate` | Generate Drizzle migration from schema   |
-| `bun run db:push`     | Push schema directly to DB (dev)         |
-| `bun run db:studio`   | Open Drizzle Studio (DB browser)         |
+| `bun run build:exe:fresh` | Build `.exe` without user data (clean distribution) |
 
 ## Adding Accounts
 

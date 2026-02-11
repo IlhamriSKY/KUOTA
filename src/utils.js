@@ -103,19 +103,6 @@ export function validateOrgName(org) {
 }
 
 /**
- * Validate GitHub username format.
- * GitHub usernames: alphanumeric + hyphens, max 39 chars
- * @param {string} username - Username
- * @returns {string|null} Valid username or null
- */
-export function validateUsername(username) {
-  if (!username || typeof username !== "string") return null;
-  const trimmed = username.trim();
-  const usernameRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,37}[a-zA-Z0-9])?$/;
-  return usernameRegex.test(trimmed) ? trimmed : null;
-}
-
-/**
  * Validate and sanitize note text.
  * @param {string} note - Note text
  * @param {number} maxLength - Maximum length (default 200)

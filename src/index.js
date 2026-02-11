@@ -41,13 +41,13 @@ async function validateStartup() {
   }
 
   if (errors.length > 0) {
-    console.error("\n❌ Startup validation failed:\n");
+    console.error("\nStartup validation failed:\n");
     errors.forEach(err => console.error(`  - ${err}`));
     console.error("\nPlease fix these issues before starting the server.\n");
     process.exit(1);
   }
 
-  console.log("✅ Startup validation passed");
+  console.log("[Startup] Validation passed");
 }
 
 // Run validation before starting
@@ -85,17 +85,13 @@ for (const path of ["/fonts/*", "/icons/*", "/favicon.ico"]) {
 }
 app.use("/manifest.json", async (c, next) => {
   await next();
-  c.header("Cache-Control", "public, max-age=86400");
+  c.header("Cache-Control", CACHE_SHORT);
   c.header("Content-Type", "application/manifest+json");
 });
 app.use("/sw.js", async (c, next) => {
   await next();
   c.header("Cache-Control", "no-cache");
   c.header("Content-Type", "application/javascript");
-});
-app.use("/favicon.ico", async (c, next) => {
-  await next();
-  c.header("Cache-Control", "public, max-age=604800");
 });
 
 // Static files
@@ -186,14 +182,14 @@ async function autoRefreshAll() {
   const accounts = getAllAccounts();
   for (const acc of accounts) {
     if (acc.is_paused) {
-      console.log(`[Auto-refresh] ⏸ ${acc.github_username} (paused, skipped)`);
+      console.log(`[Auto-refresh] ${acc.github_username} (paused, skipped)`);
       continue;
     }
     try {
       await refreshAccount(acc);
-      console.log(`[Auto-refresh] ✓ ${acc.github_username}`);
+      console.log(`[Auto-refresh] ${acc.github_username} done`);
     } catch (err) {
-      console.error(`[Auto-refresh] ✗ ${acc.github_username}: ${err.message}`);
+      console.error(`[Auto-refresh] ${acc.github_username} failed: ${err.message}`);
     }
   }
   console.log("[Auto-refresh] Complete.");
@@ -263,14 +259,4 @@ Bun.serve({
   fetch: app.fetch,
 });
 
-console.log(`
-╔══════════════════════════════════════════════╗
-║                   KUOTA                      ║
-║   Copilot & Claude Code Quota Monitor        ║
-║                                              ║
-║   ${serverUrl.padEnd(39)}║
-║                                              ║
-║   Auto-refresh: every ${String(getAutoRefreshMinutes()).padEnd(2)} min               ║
-║   Press Ctrl+C to stop                       ║
-╚══════════════════════════════════════════════╝
-`);
+console.log(`\nKUOTA - Copilot & Claude Code Quota Monitor\n${'='.repeat(44)}\n  ${serverUrl}\n  Auto-refresh: every ${getAutoRefreshMinutes()} min\n  Press Ctrl+C to stop\n`);

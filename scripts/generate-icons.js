@@ -19,7 +19,7 @@ async function generateIcons() {
     try {
       sharp = (await import('sharp')).default;
     } catch (e) {
-      console.log('⚠️  Sharp not installed. Installing sharp...');
+      console.log('Sharp not installed. Installing sharp...');
       const proc = Bun.spawn(['bun', 'add', '-d', 'sharp'], {
         stdout: 'inherit',
         stderr: 'inherit',
@@ -28,7 +28,7 @@ async function generateIcons() {
       sharp = (await import('sharp')).default;
     }
 
-    console.log('📦 Generating PWA icons...');
+    console.log('Generating PWA icons...');
 
     const svgBuffer = readFileSync(SVG_PATH);
 
@@ -38,7 +38,7 @@ async function generateIcons() {
         .resize(size, size)
         .png()
         .toFile(outputPath);
-      console.log(`✓ Generated ${size}x${size}`);
+      console.log(`Generated ${size}x${size}`);
     }
 
     // Generate favicon.ico (32x32)
@@ -47,7 +47,7 @@ async function generateIcons() {
       .resize(32, 32)
       .png()
       .toFile(faviconPath);
-    console.log('✓ Generated favicon.ico');
+    console.log('Generated favicon.ico');
 
     // Generate app-icon.ico (proper ICO format for exe and window title)
     // Uses a version with dark background + thicker strokes for small sizes
@@ -95,7 +95,7 @@ async function generateIcons() {
       e.data.copy(icoBuf, e.offset);
     }
     writeFileSync(join(process.cwd(), 'public/app-icon.ico'), icoBuf);
-    console.log('✓ Generated app-icon.ico (proper ICO format)');
+    console.log('Generated app-icon.ico (proper ICO format)');
 
     // Generate apple-touch-icon (180x180)
     const appleTouchPath = join(ICONS_DIR, 'apple-touch-icon.png');
@@ -103,11 +103,11 @@ async function generateIcons() {
       .resize(180, 180)
       .png()
       .toFile(appleTouchPath);
-    console.log('✓ Generated apple-touch-icon.png');
+    console.log('Generated apple-touch-icon.png');
 
-    console.log('✅ All icons generated successfully!');
+    console.log('All icons generated successfully!');
   } catch (error) {
-    console.error('❌ Error generating icons:', error.message);
+    console.error('Error generating icons:', error.message);
     process.exit(1);
   }
 }

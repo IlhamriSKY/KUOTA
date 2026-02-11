@@ -1135,8 +1135,7 @@ async function fetchCopilotActivity(accountId, pat, username, billingOrg, allOrg
   return null;
 }
 
-// Export for use in scheduled refresh
-export { fetchAndStoreUsage, fetchCopilotActivity };
+
 
 // Claude Code Helpers =====================
 
@@ -1232,7 +1231,7 @@ async function fetchAndStoreClaudeWebUsage(accountId, accessToken) {
   }
 }
 
-export { fetchAndStoreClaudeUsage, fetchAndStoreClaudeWebUsage };
+
 
 /**
  * Refresh usage for a single account (shared between routes and auto-refresh).
