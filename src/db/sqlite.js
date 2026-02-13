@@ -210,6 +210,14 @@ export function setSetting(key, value) {
   }).run();
 }
 
+// Strict mode (privacy) ---
+export function getStrictMode() {
+  const val = getSetting("strict_mode");
+  // Default to true if not set
+  if (val === null || val === undefined) return true;
+  return val === "true" || val === "1";
+}
+
 // Export all data for sync ---
 export function getAllData() {
   return {

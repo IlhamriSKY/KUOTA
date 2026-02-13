@@ -1,7 +1,7 @@
 import { icon } from "./icons.js";
 import { formatDate, formatRelativeTime } from "./layout.js";
-import { escapeHtml, formatNumber } from "../utils.js";
-import { PLAN_LIMITS, CLAUDE_CODE_BUDGETS } from "../db/sqlite.js";
+import { escapeHtml, formatNumber, censorName } from "../utils.js";
+import { PLAN_LIMITS, CLAUDE_CODE_BUDGETS, getStrictMode } from "../db/sqlite.js";
 
 
 //  Reset date helpers
@@ -198,13 +198,14 @@ function loginMethodBadge(account) {
 //  Account Card (dispatches to Copilot or Claude Code)
 
 export function accountCard(account, usage, details = [], error = null) {
+  const strict = getStrictMode();
   if (account.account_type === "claude_code") {
-    return claudeCodeAccountCard(account, usage, details, error);
+    return claudeCodeAccountCard(account, usage, details, error, strict);
   }
   if (account.account_type === "claude_web") {
-    return claudeWebAccountCard(account, usage, details, error);
+    return claudeWebAccountCard(account, usage, details, error, strict);
   }
-  return copilotAccountCard(account, usage, details, error);
+  return copilotAccountCard(account, usage, details, error, strict);
 }
 
 function errorBanner(error) {
@@ -298,7 +299,7 @@ function copilotActivitySection(account) {
 
 //  Copilot Account Card
 
-function copilotAccountCard(account, usage, details = [], error = null) {
+function copilotAccountCard(account, usage, details = [], error = null, strict = false) {
   const limit = PLAN_LIMITS[account.copilot_plan] || 300;
   const pct = usage ? usage.percentage : 0;
   const used = usage ? usage.gross_quantity : 0;
@@ -307,28 +308,39 @@ function copilotAccountCard(account, usage, details = [], error = null) {
   const isFav = !!account.is_favorite;
   const orgs = account.github_orgs ? account.github_orgs.split(",").filter(Boolean) : [];
 
+  // Strict mode: censor sensitive data server-side
+  const displayName = strict ? censorName(account.display_name || account.github_username) : escapeHtml(account.display_name || account.github_username);
+  const displayUsername = strict ? "" : `<p class="text-xs text-muted-foreground censor-target truncate">@${escapeHtml(account.github_username)}</p>`;
+  const displayEmail = (!strict && account.github_email) ? `<p class="text-[11px] text-muted-foreground censor-target truncate mt-0.5 flex items-center gap-1"><span class="truncate">${escapeHtml(account.github_email)}</span></p>` : "";
+  const displayOrgs = strict ? "" : (orgs.length > 0 ? `<div class="flex items-center gap-1.5 mt-2 flex-wrap censor-target">${orgs.map(o => {
+          const isBillingOrg = account.billing_org === o;
+          return `<a href="https://github.com/${escapeHtml(o)}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded ${isBillingOrg ? "bg-primary/15 text-primary ring-1 ring-primary/30" : "bg-secondary text-muted-foreground"} font-medium hover:bg-accent hover:text-foreground transition-colors" ${isBillingOrg ? 'data-tooltip="Billing source"' : ""}>${icon(isBillingOrg ? "zap" : "building", 9)} ${escapeHtml(o)}</a>`;
+        }).join("")}</div>` : "");
+  const profileLink = strict ? "javascript:void(0)" : `https://github.com/${escapeHtml(account.github_username)}`;
+  const profileTarget = strict ? "" : 'target="_blank" rel="noopener noreferrer"';
+
   return `
      <div class="bg-card border ${account.is_paused ? "border-red-500/50" : ""} rounded-md fade-in flex flex-col account-card relative ${isFav ? "ring-1 ring-amber-400" : ""}" id="account-${account.id}"
-         data-username="${escapeHtml(account.github_username)}"
-         data-displayname="${escapeHtml(account.display_name || "")}"
+         data-username="${strict ? "" : escapeHtml(account.github_username)}"
+         data-displayname="${strict ? "" : escapeHtml(account.display_name || "")}"
          data-favorite="${isFav ? "1" : "0"}"
          data-paused="${account.is_paused ? "1" : "0"}"
          data-status="${account.is_paused ? "paused" : account.pat_token ? "active" : "inactive"}"
          data-loginmethod="${resolveLoginMethod(account)}">
       <div class="p-4 pb-0">
         <div class="flex items-start justify-between gap-2">
-          <a href="https://github.com/${escapeHtml(account.github_username)}" target="_blank" rel="noopener noreferrer" class="flex items-center gap-2.5 min-w-0 group">
+          <a href="${profileLink}" ${profileTarget} class="flex items-center gap-2.5 min-w-0 group">
             <img src="${escapeHtml(account.avatar_url || `https://github.com/${account.github_username}.png?size=80`)}"
-                 alt="${escapeHtml(account.github_username)}"
+                 alt="${strict ? "" : escapeHtml(account.github_username)}"
                  class="w-9 h-9 rounded-full border flex-shrink-0 censor-target group-hover:ring-2 ring-primary/50 transition-all"
                  onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23888%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22><path d=%22M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2%22/><circle cx=%2212%22 cy=%227%22 r=%224%22/></svg>'">
             <div class="min-w-0 flex-1">
               <div class="flex items-center gap-1.5 flex-wrap">
-                <h3 class="text-sm font-semibold text-foreground truncate censor-target group-hover:text-primary transition-colors">${escapeHtml(account.display_name || account.github_username)}</h3>
+                <h3 class="text-sm font-semibold text-foreground truncate censor-target group-hover:text-primary transition-colors">${displayName}</h3>
                 ${planBadge(account.copilot_plan)}
               </div>
-              <p class="text-xs text-muted-foreground censor-target truncate">@${escapeHtml(account.github_username)}</p>
-              ${account.github_email ? `<p class="text-[11px] text-muted-foreground censor-target truncate mt-0.5 flex items-center gap-1"><span class="truncate">${escapeHtml(account.github_email)}</span></p>` : ""}
+              ${displayUsername}
+              ${displayEmail}
             </div>
           </a>
           <div class="flex items-center flex-shrink-0 -mr-1 gap-0.5">
@@ -362,7 +374,7 @@ function copilotAccountCard(account, usage, details = [], error = null) {
                   Edit
                 </button>
                 <div class="border-t my-1"></div>
-                <button onclick="openDeleteModal('${escapeHtml(account.github_username)}', ${account.id})"
+                <button onclick="openDeleteModal('${strict ? censorName(account.github_username) : escapeHtml(account.github_username)}', ${account.id})"
                         class="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-red-400/10 transition-colors text-red-400">
                   ${icon("trash", 12)}
                   Remove
@@ -371,10 +383,7 @@ function copilotAccountCard(account, usage, details = [], error = null) {
             </div>
           </div>
         </div>
-        ${orgs.length > 0 ? `<div class="flex items-center gap-1.5 mt-2 flex-wrap censor-target">${orgs.map(o => {
-          const isBillingOrg = account.billing_org === o;
-          return `<a href="https://github.com/${escapeHtml(o)}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded ${isBillingOrg ? "bg-primary/15 text-primary ring-1 ring-primary/30" : "bg-secondary text-muted-foreground"} font-medium hover:bg-accent hover:text-foreground transition-colors" ${isBillingOrg ? 'data-tooltip="Billing source"' : ""}>${icon(isBillingOrg ? "zap" : "building", 9)} ${escapeHtml(o)}</a>`;
-        }).join("")}</div>` : ""}
+        ${displayOrgs}
       </div>
       ${errorBanner(error)}
       
@@ -412,7 +421,7 @@ function copilotAccountCard(account, usage, details = [], error = null) {
 
 //  Claude Web (Pro/Max) Account Card
 
-function claudeWebAccountCard(account, usage, details = [], error = null) {
+function claudeWebAccountCard(account, usage, details = [], error = null, strict = false) {
   const fetchedAt = usage ? formatDate(usage.fetched_at) : "Never";
   const isFav = !!account.is_favorite;
   
@@ -430,6 +439,10 @@ function claudeWebAccountCard(account, usage, details = [], error = null) {
   const planLabelMap = { api: "Claude API", pro: "Claude Pro", max: "Claude Max", team: "Claude Team", enterprise: "Claude Enterprise" };
   const planLabel = planLabelMap[account.claude_plan] || ("Claude " + (account.claude_plan || "pro").replace("_", " "));
 
+  // Strict mode: censor sensitive data server-side
+  const displayName = strict ? censorName(account.display_name || account.github_username) : escapeHtml(account.display_name || account.github_username);
+  const displayIdentifier = strict ? "" : `<p class="text-xs text-muted-foreground censor-target truncate">${escapeHtml(account.claude_user_email || account.github_username)}</p>`;
+
   // Weekly bar color
   let weeklyColor = "bg-blue-500";
   let weeklyTextCls = "text-blue-500";
@@ -444,8 +457,8 @@ function claudeWebAccountCard(account, usage, details = [], error = null) {
 
   return `
     <div class="bg-card border ${account.is_paused ? "border-red-500/50" : ""} rounded-md fade-in flex flex-col account-card relative ${isFav ? "ring-1 ring-amber-400/40" : ""}" id="account-${account.id}"
-         data-username="${escapeHtml(account.github_username)}"
-         data-displayname="${escapeHtml(account.display_name || "")}"
+         data-username="${strict ? "" : escapeHtml(account.github_username)}"
+         data-displayname="${strict ? "" : escapeHtml(account.display_name || "")}"
          data-favorite="${isFav ? "1" : "0"}"
          data-paused="${account.is_paused ? "1" : "0"}"
          data-status="${account.is_paused ? "paused" : account.pat_token ? "active" : "inactive"}"
@@ -458,10 +471,10 @@ function claudeWebAccountCard(account, usage, details = [], error = null) {
             </div>
             <div class="min-w-0 flex-1">
               <div class="flex items-center gap-1.5 flex-wrap">
-                <h3 class="text-sm font-semibold text-foreground truncate censor-target">${escapeHtml(account.display_name || account.github_username)}</h3>
+                <h3 class="text-sm font-semibold text-foreground truncate censor-target">${displayName}</h3>
                 ${planBadge(account.claude_plan || "pro", "claude_web")}
               </div>
-              <p class="text-xs text-muted-foreground censor-target truncate">${escapeHtml(account.claude_user_email || account.github_username)}</p>
+              ${displayIdentifier}
             </div>
           </div>
           <div class="flex items-center flex-shrink-0 -mr-1 gap-0.5">
@@ -491,7 +504,7 @@ function claudeWebAccountCard(account, usage, details = [], error = null) {
                   Edit
                 </button>
                 <div class="border-t my-1"></div>
-                <button onclick="openDeleteModal('${escapeHtml(account.github_username)}', ${account.id})"
+                <button onclick="openDeleteModal('${strict ? censorName(account.github_username) : escapeHtml(account.github_username)}', ${account.id})"
                         class="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-red-400/10 transition-colors text-red-400">
                   ${icon("trash", 12)}
                   Remove
@@ -612,7 +625,7 @@ export function modelTable(details) {
 
 //  Claude Code Account Card
 
-function claudeCodeAccountCard(account, usage, details = [], error = null) {
+function claudeCodeAccountCard(account, usage, details = [], error = null, strict = false) {
   const budget = account.monthly_budget || CLAUDE_CODE_BUDGETS[account.claude_plan] || 100;
   const cost = usage ? usage.gross_quantity : 0; // stored as USD
   const pct = budget > 0 ? (cost / budget) * 100 : 0;
@@ -624,10 +637,14 @@ function claudeCodeAccountCard(account, usage, details = [], error = null) {
   const commits = usage ? usage.commits || 0 : 0;
   const prs = usage ? usage.pull_requests || 0 : 0;
 
+  // Strict mode: censor sensitive data server-side
+  const displayName = strict ? censorName(account.display_name || account.github_username) : escapeHtml(account.display_name || account.github_username);
+  const displayIdentifier = strict ? "" : `<p class="text-xs text-muted-foreground censor-target truncate">${escapeHtml(account.claude_user_email || account.github_username)}</p>`;
+
   return `
     <div class="bg-card border ${account.is_paused ? "border-red-500/50" : ""} rounded-md fade-in flex flex-col account-card relative ${isFav ? "ring-1 ring-amber-400/40" : ""}" id="account-${account.id}"
-         data-username="${escapeHtml(account.github_username)}"
-         data-displayname="${escapeHtml(account.display_name || "")}"
+         data-username="${strict ? "" : escapeHtml(account.github_username)}"
+         data-displayname="${strict ? "" : escapeHtml(account.display_name || "")}"
          data-favorite="${isFav ? "1" : "0"}"
          data-paused="${account.is_paused ? "1" : "0"}"
          data-status="${account.is_paused ? "paused" : account.pat_token ? "active" : "inactive"}"
@@ -640,10 +657,10 @@ function claudeCodeAccountCard(account, usage, details = [], error = null) {
             </div>
             <div class="min-w-0 flex-1">
               <div class="flex items-center gap-1.5 flex-wrap">
-                <h3 class="text-sm font-semibold text-foreground truncate censor-target">${escapeHtml(account.display_name || account.github_username)}</h3>
+                <h3 class="text-sm font-semibold text-foreground truncate censor-target">${displayName}</h3>
                 ${planBadge(account.claude_plan || "api", "claude_code")}
               </div>
-              <p class="text-xs text-muted-foreground censor-target truncate">${escapeHtml(account.claude_user_email || account.github_username)}</p>
+              ${displayIdentifier}
             </div>
           </div>
           <div class="flex items-center flex-shrink-0 -mr-1 gap-0.5">
@@ -673,7 +690,7 @@ function claudeCodeAccountCard(account, usage, details = [], error = null) {
                   Edit
                 </button>
                 <div class="border-t my-1"></div>
-                <button onclick="openDeleteModal('${escapeHtml(account.github_username)}', ${account.id})"
+                <button onclick="openDeleteModal('${strict ? censorName(account.github_username) : escapeHtml(account.github_username)}', ${account.id})"
                         class="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-red-400/10 transition-colors text-red-400">
                   ${icon("trash", 12)}
                   Remove
@@ -830,7 +847,7 @@ export function emptyState() {
 
 export function addAccountForm(hasOAuthClientId) {
   return `
-    <div class="max-w-lg mx-auto space-y-5">
+    <div class="max-w-7xl mx-auto space-y-5">
       <div>
         <h2 class="text-lg font-semibold flex items-center gap-2">
           ${icon("user", 20, "text-primary")}
@@ -1240,6 +1257,12 @@ export function editAccountForm(account) {
   const isClaudeWeb = account.account_type === "claude_web";
   const isAnyClaude = isClaude || isClaudeWeb;
   const accentColor = isAnyClaude ? "[#D97757]" : "primary";
+  const strict = getStrictMode();
+
+  // Strict mode: censor display info in edit form header
+  const editDisplayName = strict
+    ? censorName(isAnyClaude ? (account.display_name || account.github_username) : account.github_username)
+    : (isAnyClaude ? escapeHtml(account.display_name || account.github_username) : "@" + escapeHtml(account.github_username));
 
   return `
     <div class="bg-card border border-${accentColor}/30 rounded-md fade-in" id="account-${account.id}">
@@ -1256,7 +1279,7 @@ export function editAccountForm(account) {
             <div>
               <h3 class="text-sm font-semibold flex items-center gap-1.5">
                 ${icon("edit", 14, `text-${accentColor}`)}
-                Editing <span class="censor-target">${isAnyClaude ? escapeHtml(account.display_name || account.github_username) : "@" + escapeHtml(account.github_username)}</span>
+                Editing <span class="censor-target">${editDisplayName}</span>
               </h3>
               <p class="text-[11px] text-muted-foreground">${isClaudeWeb ? "Update OAuth tokens or plan" : isClaude ? "Update API key, plan, or budget" : "Update token or change plan"}</p>
             </div>
@@ -1314,7 +1337,7 @@ export function editAccountForm(account) {
         </div>
         <div>
           <label class="block text-xs font-medium mb-1">User Email <span class="text-muted-foreground font-normal">(optional)</span></label>
-          <input type="email" name="user_email" value="${escapeHtml(account.claude_user_email || "")}" placeholder="Filter to specific user" 
+          <input type="email" name="user_email" value="${strict ? "" : escapeHtml(account.claude_user_email || "")}" placeholder="${strict ? "Hidden in strict mode" : "Filter to specific user"}" 
                  class="input-field w-full px-2.5 py-1.5 bg-background border rounded text-foreground text-xs censor-target">
         </div>
         <div class="grid grid-cols-2 gap-3">
@@ -1346,9 +1369,9 @@ export function editAccountForm(account) {
         <div>
           <label class="block text-xs font-medium mb-1">Billing Source</label>
           <select name="billing_org" class="input-field w-full px-2.5 py-1.5 bg-background border rounded text-foreground text-xs">
-            <option value=""${!account.billing_org ? " selected" : ""}>Personal (${escapeHtml(account.github_username)})</option>
+            <option value=""${!account.billing_org ? " selected" : ""}>Personal (${strict ? censorName(account.github_username) : escapeHtml(account.github_username)})</option>
             ${(account.github_orgs || "").split(",").filter(Boolean).map(org => 
-              `<option value="${escapeHtml(org)}"${account.billing_org === org ? " selected" : ""}>${escapeHtml(org)}</option>`
+              `<option value="${escapeHtml(org)}"${account.billing_org === org ? " selected" : ""}>${strict ? censorName(org) : escapeHtml(org)}</option>`
             ).join("")}
           </select>
           <p class="text-[11px] text-muted-foreground mt-1">Select the org that manages your Copilot, or "Personal" if self-managed.</p>
@@ -1414,15 +1437,45 @@ export function alertBox(type, message) {
 
 //  Settings Page
 
-export function settingsPage(mysqlConfig, autoRefreshMinutes) {
+export function settingsPage(mysqlConfig, autoRefreshMinutes, strictMode = true) {
   return `
-    <div class="max-w-lg mx-auto space-y-5">
+    <div class="max-w-7xl mx-auto space-y-5">
       <div>
         <h2 class="text-lg font-semibold flex items-center gap-2">
           ${icon("settings", 20, "text-primary")}
           Settings
         </h2>
         <p class="text-sm text-muted-foreground mt-0.5">Configure your monitoring preferences.</p>
+      </div>
+
+      <!-- Strict Mode (Privacy) -->
+      <div class="bg-card border rounded-md overflow-hidden">
+        <div class="p-4 border-b bg-muted/30">
+          <h3 class="text-sm font-semibold flex items-center gap-2">
+            ${icon("shield", 16, "text-primary")}
+            Strict Mode
+          </h3>
+          <p class="text-xs text-muted-foreground mt-0.5">When enabled, account names are censored (e.g. "W....") and usernames/emails are hidden from the UI. Data is stripped server-side for security.</p>
+        </div>
+        <form hx-post="/api/settings/strict-mode" hx-target="#strict-mode-result" hx-swap="innerHTML" class="p-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-medium">${strictMode ? "Enabled" : "Disabled"}</span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded ${strictMode ? "bg-emerald-500/10 text-emerald-500" : "bg-amber-500/10 text-amber-500"} font-medium">${strictMode ? "Secure" : "Visible"}</span>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" name="enabled" value="1" ${strictMode ? "checked" : ""} class="sr-only toggle-input" onchange="this.form.requestSubmit()">
+              <div class="toggle-switch"></div>
+            </label>
+          </div>
+          <div class="text-[11px] text-muted-foreground space-y-1">
+            <p class="flex items-center gap-1.5">${icon("check", 10, "text-emerald-500")} Names shown as first letter + dots (e.g. "W....")</p>
+            <p class="flex items-center gap-1.5">${icon("check", 10, "text-emerald-500")} Usernames and emails completely hidden</p>
+            <p class="flex items-center gap-1.5">${icon("check", 10, "text-emerald-500")} Organization names hidden</p>
+            <p class="flex items-center gap-1.5">${icon("check", 10, "text-emerald-500")} Data stripped on server — not sent to browser</p>
+          </div>
+        </form>
+        <div id="strict-mode-result" class="px-4 pb-4"></div>
       </div>
 
       <!-- Auto-Refresh Config -->
@@ -1508,6 +1561,23 @@ export function settingsPage(mysqlConfig, autoRefreshMinutes) {
             Sync to MySQL Now
           </button>
           <div id="sync-result" class="mt-3"></div>
+        </div>
+      </div>
+
+      <!-- Clear Cache -->
+      <div class="bg-card border rounded-md overflow-hidden">
+        <div class="p-4">
+          <h3 class="text-sm font-semibold flex items-center gap-2 mb-1">
+            ${icon("trash", 16, "text-primary")}
+            Clear Cache
+          </h3>
+          <p class="text-xs text-muted-foreground mb-3">Clear browser cache, service worker cache, and reload the app.</p>
+          <button onclick="clearAppCache(this)"
+                  class="w-full inline-flex items-center justify-center gap-2 px-3 py-2 border border-red-500/30 text-red-500 rounded-md hover:bg-red-500/10 transition-colors text-sm font-medium" aria-label="Clear cache">
+            ${icon("trash", 14)}
+            Clear Cache & Reload
+          </button>
+          <div id="clear-cache-result" class="mt-3"></div>
         </div>
       </div>
     </div>`;

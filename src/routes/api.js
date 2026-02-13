@@ -14,10 +14,11 @@ import {
   createAccount, updateAccount, deleteAccount, toggleFavorite, togglePause,
   upsertUsageHistory, getLatestUsage, getUsageDetails,
   clearUsageDetails, insertUsageDetail,
-  PLAN_LIMITS, CLAUDE_CODE_BUDGETS, setSetting, getAllData,
+  PLAN_LIMITS, CLAUDE_CODE_BUDGETS, setSetting, getAllData, getStrictMode,
 } from "../db/sqlite.js";
 import { syncToMysql } from "../db/mysql.js";
 import { accountCard, alertBox, oauthDeviceCode, editAccountForm } from "../views/components.js";
+import { renderUsageBars } from "../views/dashboard.js";
 import { escapeHtml, parseId, validatePlan, validateClaudePlan, validateEmail, validateOrgName, validateNote } from "../utils.js";
 import { startAutoRefresh } from "../index.js";
 
@@ -672,6 +673,11 @@ api.post("/refresh-all", async (c) => {
   return c.json({ ids: activeIds });
 });
 
+// Get updated usage summary HTML
+api.get("/summary", (c) => {
+  return c.html(renderUsageBars());
+});
+
 // Copy token - uses custom header to avoid logging exposure (POST for security)
 api.post("/account/:id/token", (c) => {
   const id = parseId(c.req.param("id"));
@@ -900,6 +906,18 @@ api.post("/settings/auto-refresh", async (c) => {
     setSetting("auto_refresh_minutes", String(minutes));
     startAutoRefresh();
     return c.html(alertBox("success", `Auto-refresh interval set to ${minutes} minute${minutes !== 1 ? "s" : ""}. Applied immediately.`));
+  } catch (err) {
+    return c.html(alertBox("error", `Error: ${escapeHtml(err.message)}`));
+  }
+});
+
+// Toggle Strict Mode (privacy)
+api.post("/settings/strict-mode", async (c) => {
+  try {
+    const body = await c.req.parseBody();
+    const enabled = body.enabled === "1" || body.enabled === "true";
+    setSetting("strict_mode", enabled ? "true" : "false");
+    return c.html(alertBox("success", `Strict mode ${enabled ? "enabled" : "disabled"}. Dashboard will now ${enabled ? "censor" : "show"} account names, usernames, and emails.`));
   } catch (err) {
     return c.html(alertBox("error", `Error: ${escapeHtml(err.message)}`));
   }

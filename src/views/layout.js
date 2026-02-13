@@ -81,15 +81,15 @@ export function layout(title, body, extraHead = "") {
         <span class="font-semibold hidden sm:inline">KUOTA</span>
       </a>
       <nav class="flex items-center gap-0.5">
-        <a href="/" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm rounded hover:bg-accent transition-colors text-muted-foreground hover:text-foreground">
+        <a href="/" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm rounded transition-colors ${title === "Dashboard" ? "bg-accent text-foreground font-medium" : "text-muted-foreground hover:bg-accent hover:text-foreground"}">
           ${icon("dashboard", 16)}
           <span class="hidden sm:inline">Dashboard</span>
         </a>
-        <a href="/add" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm rounded hover:bg-accent transition-colors text-muted-foreground hover:text-foreground">
+        <a href="/add" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm rounded transition-colors ${title === "Add Account" ? "bg-accent text-foreground font-medium" : "text-muted-foreground hover:bg-accent hover:text-foreground"}">
           ${icon("plus-circle", 16)}
           <span class="hidden sm:inline">Add</span>
         </a>
-        <a href="/settings" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm rounded hover:bg-accent transition-colors text-muted-foreground hover:text-foreground">
+        <a href="/settings" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm rounded transition-colors ${title === "Settings" ? "bg-accent text-foreground font-medium" : "text-muted-foreground hover:bg-accent hover:text-foreground"}">
           ${icon("settings", 16)}
           <span class="hidden sm:inline">Settings</span>
         </a>
@@ -324,8 +324,47 @@ export function layout(title, body, extraHead = "") {
         });
     }
 
-    // Refresh All — sequential per-card refresh with loading animation
+    // Refresh All — concurrent batch refresh with loading animation
     var refreshAllRunning = false;
+
+    // Clear App Cache
+    function clearAppCache(btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<svg class="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Clearing...';
+      var cleared = [];
+
+      // 1. Unregister service workers
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+          registrations.forEach(function(r) { r.unregister(); });
+          if (registrations.length > 0) cleared.push(registrations.length + ' service worker(s)');
+        }).catch(function() {});
+      }
+
+      // 2. Clear Cache Storage API
+      if ('caches' in window) {
+        caches.keys().then(function(names) {
+          names.forEach(function(name) { caches.delete(name); });
+          if (names.length > 0) cleared.push(names.length + ' cache(s)');
+        }).catch(function() {});
+      }
+
+      // 3. Clear localStorage (except theme preference)
+      var theme = localStorage.getItem('theme');
+      localStorage.clear();
+      if (theme) localStorage.setItem('theme', theme);
+      cleared.push('localStorage');
+
+      // Reload after a short delay
+      setTimeout(function() {
+        var result = document.getElementById('clear-cache-result');
+        if (result) {
+          result.innerHTML = '<div class="bg-emerald-500/10 border border-emerald-500/20 rounded-md p-3"><div class="flex items-start gap-2 text-emerald-500"><span class="text-xs">Cleared: ' + cleared.join(', ') + '. Reloading...</span></div></div>';
+        }
+        setTimeout(function() { location.reload(true); }, 800);
+      }, 500);
+    }
+
     function refreshAll(btn) {
       if (refreshAllRunning) return;
       refreshAllRunning = true;
@@ -345,15 +384,34 @@ export function layout(title, body, extraHead = "") {
             return;
           }
           var completed = 0;
-          function updateLabel() {
-            completed++;
-            if (label) label.textContent = completed + ' / ' + ids.length;
-          }
+          if (label) label.textContent = '0 / ' + ids.length;
 
-          // Refresh cards sequentially
-          function refreshNext(index) {
-            if (index >= ids.length) {
-              // All done
+          // Add spinners to all cards
+          ids.forEach(function(id) {
+            var card = document.getElementById('account-' + id);
+            if (card) {
+              card.classList.add('card-refreshing');
+              var refreshBtn = card.querySelector('.refresh-btn');
+              if (refreshBtn) refreshBtn.classList.add('htmx-request');
+              var overlay = document.createElement('div');
+              overlay.className = 'refresh-overlay';
+              overlay.innerHTML = '<div class="animate-spin text-primary">' +
+                '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>' +
+                '</div>';
+              card.appendChild(overlay);
+            }
+          });
+
+          // Concurrent refresh with concurrency limit
+          var CONCURRENCY = 5;
+          var queue = ids.slice();
+          var active = 0;
+
+          function onDone() {
+            completed++;
+            active--;
+            if (label) label.textContent = completed + ' / ' + ids.length;
+            if (completed >= ids.length) {
               refreshAllRunning = false;
               btn.disabled = false;
               btn.classList.remove('htmx-request');
@@ -361,26 +419,12 @@ export function layout(title, body, extraHead = "") {
               showToast('All accounts refreshed', 'success');
               return;
             }
+            runNext();
+          }
 
-            var id = ids[index];
+          function refreshOne(id) {
+            active++;
             var card = document.getElementById('account-' + id);
-
-            // Add refreshing class + spinner overlay
-            if (card) {
-              card.classList.add('card-refreshing');
-              // Show spinner on the card's refresh button
-              var refreshBtn = card.querySelector('.refresh-btn');
-              if (refreshBtn) refreshBtn.classList.add('htmx-request');
-              // Add spinner overlay
-              var overlay = document.createElement('div');
-              overlay.className = 'refresh-overlay';
-              overlay.innerHTML = '<div class="animate-spin text-primary">' + 
-                '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>' +
-                '</div>';
-              card.appendChild(overlay);
-            }
-
-            // Trigger refresh for this card
             fetch('/api/refresh/' + id, { method: 'POST' })
               .then(function(r) { return r.text(); })
               .then(function(html) {
@@ -392,12 +436,10 @@ export function layout(title, body, extraHead = "") {
                     newCard.classList.add('card-refreshed');
                     card.replaceWith(newCard);
                     htmx.process(newCard);
-                    // Brief flash to indicate completion
                     setTimeout(function() { newCard.classList.remove('card-refreshed'); }, 1500);
                   }
                 }
-                updateLabel();
-                refreshNext(index + 1);
+                onDone();
               })
               .catch(function() {
                 if (card) {
@@ -407,13 +449,17 @@ export function layout(title, body, extraHead = "") {
                   var rb = card.querySelector('.refresh-btn');
                   if (rb) rb.classList.remove('htmx-request');
                 }
-                updateLabel();
-                refreshNext(index + 1);
+                onDone();
               });
           }
 
-          if (label) label.textContent = '0 / ' + ids.length;
-          refreshNext(0);
+          function runNext() {
+            while (active < CONCURRENCY && queue.length > 0) {
+              refreshOne(queue.shift());
+            }
+          }
+
+          runNext();
         })
         .catch(function() {
           refreshAllRunning = false;
@@ -497,20 +543,27 @@ export function layout(title, body, extraHead = "") {
       }
       document.querySelectorAll('.login-filter-badge').forEach(function(btn) {
         var method = btn.getAttribute('data-method');
+        var span = btn.querySelector('span');
         if (method === activeLoginFilter) {
-          // Blue for GitHub (pat/oauth)
           if (method === 'pat' || method === 'oauth') {
-            btn.style.backgroundColor = 'rgb(59 130 246)'; // blue-500
+            btn.style.backgroundColor = 'rgb(59 130 246)';
+            btn.style.borderColor = 'rgb(59 130 246)';
             btn.style.color = 'white';
-          }
-          // Orange for Claude (claude_cli/claude_api)
-          else if (method === 'claude_cli' || method === 'claude_api') {
+            btn.style.boxShadow = '0 0 10px rgba(59, 130, 246, 0.3)';
+            if (span) { span.style.backgroundColor = 'rgba(255,255,255,0.25)'; span.style.color = 'white'; }
+          } else if (method === 'claude_cli' || method === 'claude_api') {
             btn.style.backgroundColor = '#D97757';
+            btn.style.borderColor = '#D97757';
             btn.style.color = 'white';
+            btn.style.boxShadow = '0 0 10px rgba(217, 119, 87, 0.3)';
+            if (span) { span.style.backgroundColor = 'rgba(255,255,255,0.25)'; span.style.color = 'white'; }
           }
         } else {
           btn.style.backgroundColor = '';
+          btn.style.borderColor = '';
           btn.style.color = '';
+          btn.style.boxShadow = '';
+          if (span) { span.style.backgroundColor = ''; span.style.color = ''; }
         }
       });
       applyFilters();
@@ -524,25 +577,33 @@ export function layout(title, body, extraHead = "") {
       }
       document.querySelectorAll('.status-filter-badge').forEach(function(btn) {
         var btnStatus = btn.getAttribute('data-status');
+        var span = btn.querySelector('span');
         if (btnStatus === activeStatusFilter) {
-          // Green for Active
           if (btnStatus === 'active') {
-            btn.style.backgroundColor = 'rgb(16 185 129)'; // emerald-500
+            btn.style.backgroundColor = 'rgb(16 185 129)';
+            btn.style.borderColor = 'rgb(16 185 129)';
             btn.style.color = 'white';
-          }
-          // Gray for Paused
-          else if (btnStatus === 'paused') {
-            btn.style.backgroundColor = 'rgb(107 114 128)'; // gray-500
+            btn.style.boxShadow = '0 0 10px rgba(16, 185, 129, 0.3)';
+            if (span) { span.style.backgroundColor = 'rgba(255,255,255,0.25)'; span.style.color = 'white'; }
+          } else if (btnStatus === 'paused') {
+            btn.style.backgroundColor = 'rgb(107 114 128)';
+            btn.style.borderColor = 'rgb(107 114 128)';
             btn.style.color = 'white';
-          }
-          // Amber for Inactive
-          else if (btnStatus === 'inactive') {
-            btn.style.backgroundColor = 'rgb(245 158 11)'; // amber-500
+            btn.style.boxShadow = '0 0 10px rgba(107, 114, 128, 0.3)';
+            if (span) { span.style.backgroundColor = 'rgba(255,255,255,0.25)'; span.style.color = 'white'; }
+          } else if (btnStatus === 'inactive') {
+            btn.style.backgroundColor = 'rgb(245 158 11)';
+            btn.style.borderColor = 'rgb(245 158 11)';
             btn.style.color = 'white';
+            btn.style.boxShadow = '0 0 10px rgba(245, 158, 11, 0.3)';
+            if (span) { span.style.backgroundColor = 'rgba(255,255,255,0.25)'; span.style.color = 'white'; }
           }
         } else {
           btn.style.backgroundColor = '';
+          btn.style.borderColor = '';
           btn.style.color = '';
+          btn.style.boxShadow = '';
+          if (span) { span.style.backgroundColor = ''; span.style.color = ''; }
         }
       });
       applyFilters();
@@ -553,11 +614,19 @@ export function layout(title, body, extraHead = "") {
       activeStatusFilter = null;
       document.querySelectorAll('.login-filter-badge').forEach(function(btn) {
         btn.style.backgroundColor = '';
+        btn.style.borderColor = '';
         btn.style.color = '';
+        btn.style.boxShadow = '';
+        var span = btn.querySelector('span');
+        if (span) { span.style.backgroundColor = ''; span.style.color = ''; }
       });
       document.querySelectorAll('.status-filter-badge').forEach(function(btn) {
         btn.style.backgroundColor = '';
+        btn.style.borderColor = '';
         btn.style.color = '';
+        btn.style.boxShadow = '';
+        var span = btn.querySelector('span');
+        if (span) { span.style.backgroundColor = ''; span.style.color = ''; }
       });
       var resetBtn = document.getElementById('filter-reset-btn');
       if (resetBtn) resetBtn.classList.add('hidden');
@@ -751,8 +820,23 @@ export function layout(title, body, extraHead = "") {
       }, 600);
     }
 
+    // Refresh Overall Usage summary via API
+    function refreshSummary() {
+      var el = document.getElementById('usage-summary');
+      if (!el) return;
+      fetch('/api/summary')
+        .then(function(r) { return r.text(); })
+        .then(function(html) {
+          el.innerHTML = html;
+        })
+        .catch(function() {});
+    }
+
     // Handle pause/resume toggle - move between sections if needed
     function handlePauseToggle(e) {
+      // Refresh Overall Usage summary
+      refreshSummary();
+      
       // Find the card by ID from the DOM (robust for outerHTML swap)
       var pausePath = (e.detail.pathInfo && e.detail.pathInfo.requestPath) || e.detail.requestConfig.path || '';
       var pauseAccountId = pausePath.split('/')[3];

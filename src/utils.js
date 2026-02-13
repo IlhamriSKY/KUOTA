@@ -156,6 +156,38 @@ export function sanitizeError(message) {
 }
 
 /**
+ * Censor a name for strict/privacy mode.
+ * Shows only the first character followed by dots.
+ * e.g., "Wahyu" → "W....", "John Doe" → "J...."
+ * @param {string} name - The name to censor
+ * @returns {string} Censored name
+ */
+export function censorName(name) {
+  if (!name || typeof name !== "string" || name.length === 0) return "****";
+  return name.charAt(0).toUpperCase() + "....";
+}
+
+/**
+ * Censor an email for strict/privacy mode.
+ * e.g., "user@example.com" → "u****@e****.com"
+ * @param {string} email
+ * @returns {string} Censored email or empty
+ */
+export function censorEmail(email) {
+  return "";
+}
+
+/**
+ * Censor a username for strict/privacy mode.
+ * e.g., "@johndoe" → "@j****"
+ * @param {string} username
+ * @returns {string} Censored username or empty
+ */
+export function censorUsername(username) {
+  return "";
+}
+
+/**
  * Fetch with timeout support. Shared by all API service modules.
  * @param {string} url - URL to fetch
  * @param {object} options - Fetch options

@@ -5,6 +5,7 @@ import { addAccountForm, settingsPage } from "../views/components.js";
 import { getClientId } from "../services/oauth.js";
 import { getMysqlConfig } from "../db/mysql.js";
 import { getAutoRefreshMinutes } from "../index.js";
+import { getStrictMode } from "../db/sqlite.js";
 
 const pages = new Hono();
 
@@ -22,7 +23,7 @@ pages.get("/add", (c) => {
 // Settings page
 pages.get("/settings", (c) => {
   const mysqlConfig = getMysqlConfig();
-  return c.html(layout("Settings", settingsPage(mysqlConfig, getAutoRefreshMinutes())));
+  return c.html(layout("Settings", settingsPage(mysqlConfig, getAutoRefreshMinutes(), getStrictMode())));
 });
 
 export default pages;
